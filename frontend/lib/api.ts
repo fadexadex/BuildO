@@ -32,6 +32,31 @@ export interface CodeExecutionResponse {
   error?: string;
 }
 
+export interface CodeChange {
+  type: 'replace' | 'insert' | 'append' | 'prepend';
+  description: string;
+  code: string;
+  lineRange?: { start: number; end: number }; // For replace operations
+  position?: number; // For insert operations
+}
+
+export interface SimpleChatRequest {
+  sessionId: string;
+  message: string;
+  mode?: 'ask' | 'agent'; // ask = general questions, agent = code-focused
+  currentCode?: string; // Current code context for agent mode
+}
+
+export interface SimpleChatResponse {
+  sessionId: string;
+  response: string;
+  mode: string;
+  success: boolean;
+  error?: string; // Add missing error property
+  codeChanges?: CodeChange[]; // Auto-applicable code changes
+  hasCodeChanges?: boolean; // Quick check for frontend
+}
+
 export class AgentAPI {
   static async chat(request: ChatRequest): Promise<ChatResponse> {
     try {
@@ -115,6 +140,55 @@ export class AgentAPI {
       return data;
     } catch (error) {
       console.error('Error executing code:', error);
+      throw error instanceof Error ? error : new Error('Unknown error occurred');
+    }
+  }
+}
+
+export class SimpleChatAPI {
+  static async chat(request: SimpleChatRequest): Promise<SimpleChatResponse> {
+    try {
+      console.log('Simple chat request:', request);
+      const response = await fetch(`${API_BASE_URL}/agent/simple-chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error in simple chat:', error);
+      throw error instanceof Error ? error : new Error('Unknown error occurred');
+    }
+  }
+
+  static async clearSession(sessionId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/agent/simple-chat/clear-session`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ sessionId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error clearing simple chat session:', error);
       throw error instanceof Error ? error : new Error('Unknown error occurred');
     }
   }

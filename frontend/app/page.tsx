@@ -29,7 +29,7 @@ import {
   Clock,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { AgentAPI, ChatRequest, CodeExecutionRequest } from "@/lib/api"
+import { AgentAPI, ChatRequest, CodeExecutionRequest, SimpleChatAPI, SimpleChatRequest, CodeChange } from "@/lib/api"
 
 interface Message {
   id: string
@@ -46,10 +46,14 @@ interface Message {
   isAccepted?: boolean
   transactionData?: {
     action: string
-    estimatedCost: string
     details: string[]
     transactionHash?: string
+    estimatedCost?: string // Add optional estimatedCost
   }
+  codeChanges?: CodeChange[] // New field for code changes
+  hasCodeChanges?: boolean // Quick check
+  isApplyingChanges?: boolean // Animation state
+  originalCode?: string // For rollback functionality
 }
 
 export default function BuildOPlayground() {
@@ -59,7 +63,17 @@ export default function BuildOPlayground() {
   const [inputValue, setInputValue] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [selectedLanguage, setSelectedLanguage] = useState("javascript")
-  const [playgroundCode, setPlaygroundCode] = useState("")
+  const [playgroundCode, setPlaygroundCode] = useState(`// Hedera Account Balance Checker
+const { Client, AccountId } = require('@hashgraph/sdk');
+
+function checkBalance(accountString) {
+  const account = AccountId.fromString(accountString);
+  console.log('Checking balance for:', account.toString());
+  return account;
+}
+
+// Example usage
+const account = checkBalance('0.0.123');`)
   const [playgroundOutput, setPlaygroundOutput] = useState("")
   const [isExecuting, setIsExecuting] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
@@ -75,6 +89,11 @@ export default function BuildOPlayground() {
   const [workspaceInput, setWorkspaceInput] = useState("")
   const [workspaceLoading, setWorkspaceLoading] = useState(false)
   const [assistantMode, setAssistantMode] = useState<"ask" | "agent">("ask")
+
+  // New states for codebase context and code application
+  const [includeCodebaseContext, setIncludeCodebaseContext] = useState(true)
+  const [simpleChatSessionId, setSimpleChatSessionId] = useState<string>("")
+  const [pendingCodeChanges, setPendingCodeChanges] = useState<{messageId: string, changes: CodeChange[], originalCode: string} | null>(null)
 
   // Session management states
   const [agentSessionId, setAgentSessionId] = useState<string>("")
@@ -172,25 +191,31 @@ main();`;
     workspaceMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [workspaceMessages])
 
-  // Check for existing credentials on page load
   useEffect(() => {
-    const storedAccountId = sessionStorage.getItem("hedera_account_id")
-    const storedPrivateKey = sessionStorage.getItem("hedera_private_key")
-    const storedAgentSessionId = sessionStorage.getItem("agent_session_id")
-    const storedWorkspaceSessionId = sessionStorage.getItem("workspace_session_id")
-    
-    if (storedAccountId && storedPrivateKey) {
-      setAccountId(storedAccountId)
-      setPrivateKey(storedPrivateKey)
-      setIsConnected(true)
-    }
+    if (typeof window !== "undefined") {
+      const savedAccountId = sessionStorage.getItem("hedera_account_id")
+      const savedPrivateKey = sessionStorage.getItem("hedera_private_key")
+      const savedAgentSessionId = sessionStorage.getItem("agent_session_id")
+      const savedWorkspaceSessionId = sessionStorage.getItem("workspace_session_id")
+      const savedSimpleChatSessionId = sessionStorage.getItem("simple_chat_session_id")
 
-    if (storedAgentSessionId) {
-      setAgentSessionId(storedAgentSessionId)
-    }
+      if (savedAccountId && savedPrivateKey) {
+        setAccountId(savedAccountId)
+        setPrivateKey(savedPrivateKey)
+        setIsConnected(true)
+      }
 
-    if (storedWorkspaceSessionId) {
-      setWorkspaceSessionId(storedWorkspaceSessionId)
+      if (savedAgentSessionId) {
+        setAgentSessionId(savedAgentSessionId)
+      }
+
+      if (savedWorkspaceSessionId) {
+        setWorkspaceSessionId(savedWorkspaceSessionId)
+      }
+
+      if (savedSimpleChatSessionId) {
+        setSimpleChatSessionId(savedSimpleChatSessionId)
+      }
     }
   }, [])
 
@@ -493,9 +518,9 @@ main();`;
     setWorkspaceLoading(true)
 
     try {
-      // Execute the real agent for workspace too
-      const agentResponse = await executeAgentRequest(currentInput, true)
-      setWorkspaceMessages((prev) => [...prev, agentResponse])
+      // Use simple chat for workspace functionality now
+      const response = await executeSimpleChatRequest(currentInput)
+      setWorkspaceMessages((prev) => [...prev, response])
     } catch (error) {
       console.error('Workspace message error:', error)
       const errorMessage: Message = {
@@ -508,6 +533,169 @@ main();`;
       setWorkspaceMessages((prev) => [...prev, errorMessage])
     } finally {
       setWorkspaceLoading(false)
+    }
+  }
+
+  // New function for simple chat requests
+  const executeSimpleChatRequest = async (userInput: string): Promise<Message> => {
+    try {
+      console.log('Executing simple chat request:', userInput)
+      
+      // Generate session ID if needed
+      let sessionId = simpleChatSessionId
+      if (!sessionId) {
+        sessionId = `simple-chat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        setSimpleChatSessionId(sessionId)
+        sessionStorage.setItem("simple_chat_session_id", sessionId)
+      }
+
+      // Prepare request with current code context if needed
+      const request: SimpleChatRequest = {
+        sessionId,
+        message: userInput,
+        mode: assistantMode,
+        currentCode: includeCodebaseContext ? playgroundCode : undefined,
+      }
+
+      const data = await SimpleChatAPI.chat(request)
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Simple chat request failed')
+      }
+
+      console.log('Simple chat response:', data)
+      
+      // Create response message
+      const responseMessage: Message = {
+        id: Date.now().toString(),
+        type: "assistant",
+        content: data.response,
+        timestamp: new Date(),
+        status: "success",
+        codeChanges: data.codeChanges,
+        hasCodeChanges: data.hasCodeChanges,
+        originalCode: playgroundCode, // Store original for rollback
+      }
+
+      // Auto-apply code changes if in agent mode
+      if (assistantMode === 'agent' && data.hasCodeChanges && data.codeChanges) {
+        setTimeout(() => {
+          applyCodeChangesWithAnimation(responseMessage.id, data.codeChanges!, playgroundCode)
+        }, 500) // Small delay for better UX
+      }
+
+      return responseMessage
+
+    } catch (error) {
+      console.error('Simple chat execution error:', error)
+      throw error
+    }
+  }
+
+  // Apply code changes with gradient animation
+  const applyCodeChangesWithAnimation = async (messageId: string, changes: CodeChange[], originalCode: string) => {
+    // Mark message as applying changes
+    setWorkspaceMessages((prev) => prev.map((msg) => 
+      msg.id === messageId ? { ...msg, isApplyingChanges: true } : msg
+    ))
+
+    // Store pending changes for accept/reject
+    setPendingCodeChanges({ messageId, changes, originalCode })
+
+    try {
+      let newCode = originalCode
+      
+      // Apply changes in order
+      for (const change of changes) {
+        await new Promise(resolve => setTimeout(resolve, 300)) // Animation delay
+        newCode = applyCodeChange(newCode, change)
+        setPlaygroundCode(newCode)
+      }
+
+      // Mark changes as applied
+      setWorkspaceMessages((prev) => prev.map((msg) => 
+        msg.id === messageId ? { ...msg, isApplyingChanges: false } : msg
+      ))
+
+      toast({
+        title: "Code Applied",
+        description: "AI changes have been applied. You can accept or reject them.",
+      })
+
+    } catch (error) {
+      console.error('Error applying code changes:', error)
+      setWorkspaceMessages((prev) => prev.map((msg) => 
+        msg.id === messageId ? { ...msg, isApplyingChanges: false } : msg
+      ))
+      toast({
+        title: "Application Failed",
+        description: "Failed to apply code changes.",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // Apply individual code change
+  const applyCodeChange = (code: string, change: CodeChange): string => {
+    const lines = code.split('\n')
+    
+    switch (change.type) {
+      case 'replace':
+        if (change.lineRange) {
+          const beforeLines = lines.slice(0, change.lineRange.start - 1)
+          const afterLines = lines.slice(change.lineRange.end)
+          const newLines = change.code.split('\n')
+          return [...beforeLines, ...newLines, ...afterLines].join('\n')
+        }
+        return code
+        
+      case 'insert':
+        if (change.position !== undefined) {
+          const beforeLines = lines.slice(0, change.position - 1)
+          const afterLines = lines.slice(change.position - 1)
+          const newLines = change.code.split('\n')
+          return [...beforeLines, ...newLines, ...afterLines].join('\n')
+        }
+        return code
+        
+      case 'append':
+        return code + '\n' + change.code
+        
+      case 'prepend':
+        return change.code + '\n' + code
+        
+      default:
+        return code
+    }
+  }
+
+  // Accept code changes
+  const acceptCodeChanges = (messageId: string) => {
+    if (pendingCodeChanges && pendingCodeChanges.messageId === messageId) {
+      setPendingCodeChanges(null)
+      setWorkspaceMessages((prev) => prev.map((msg) => 
+        msg.id === messageId ? { ...msg, isAccepted: true } : msg
+      ))
+      toast({
+        title: "Changes Accepted",
+        description: "Code changes have been accepted.",
+      })
+    }
+  }
+
+  // Reject code changes
+  const rejectCodeChanges = (messageId: string) => {
+    if (pendingCodeChanges && pendingCodeChanges.messageId === messageId) {
+      // Restore original code
+      setPlaygroundCode(pendingCodeChanges.originalCode)
+      setPendingCodeChanges(null)
+      setWorkspaceMessages((prev) => prev.map((msg) => 
+        msg.id === messageId ? { ...msg, isAccepted: false } : msg
+      ))
+      toast({
+        title: "Changes Rejected",
+        description: "Original code has been restored.",
+      })
     }
   }
 
@@ -568,6 +756,29 @@ main();`;
       setPlaygroundCode("");
     }
     setPlaygroundOutput("");
+  }
+
+  const clearWorkspaceConversation = async () => {
+    try {
+      if (simpleChatSessionId) {
+        await SimpleChatAPI.clearSession(simpleChatSessionId)
+        setSimpleChatSessionId("")
+        sessionStorage.removeItem("simple_chat_session_id")
+      }
+      setWorkspaceMessages([])
+      setPendingCodeChanges(null)
+      toast({
+        title: "Conversation Cleared",
+        description: "Workspace conversation has been cleared.",
+      })
+    } catch (error) {
+      console.error('Error clearing workspace conversation:', error)
+      toast({
+        title: "Clear Failed",
+        description: "Failed to clear conversation.",
+        variant: "destructive"
+      })
+    }
   }
 
   return (
@@ -698,9 +909,11 @@ main();`;
                                       Transaction Hash: {message.transactionData.transactionHash}
                                     </p>
                                   )}
-                                  <p className="text-xs text-green-700">
-                                    Network Fee: {message.transactionData.estimatedCost}
-                                  </p>
+                                  {message.transactionData.estimatedCost && (
+                                    <p className="text-xs text-green-700">
+                                      Network Fee: {message.transactionData.estimatedCost}
+                                    </p>
+                                  )}
                                 </div>
                               </div>
                             )}
@@ -956,8 +1169,17 @@ main();`;
                   <Card className="border-gray-200 flex-1 flex flex-col min-h-0">
                     <CardContent className="p-0 flex-1 flex flex-col min-h-0">
                       {/* Assistant Header */}
-                      <div className="flex items-center px-4 py-3 border-b border-gray-200 bg-gray-50">
+                      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
                         <span className="text-sm font-medium text-gray-700">Assistant</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={clearWorkspaceConversation}
+                          className="h-6 px-2 text-xs"
+                        >
+                          <Trash2 className="w-3 h-3 mr-1" />
+                          Clear
+                        </Button>
                       </div>
 
                       {/* Messages */}
@@ -1061,6 +1283,108 @@ main();`;
                                 </div>
                               </div>
                             )}
+
+                            {/* New Code Changes Display */}
+                            {message.hasCodeChanges && message.codeChanges && (
+                              <div className="flex justify-start">
+                                <div className="flex items-start space-x-2 max-w-[95%] w-full">
+                                  <div className="flex-shrink-0 mt-1">
+                                    <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                                      <Bot className="w-3 h-3 text-blue-600" />
+                                    </div>
+                                  </div>
+                                  <div className="w-full">
+                                    <Card className={`border-blue-200 transition-all duration-500 ${
+                                      message.isApplyingChanges ? 'bg-gradient-to-b from-blue-50 to-white' : ''
+                                    }`}>
+                                      <CardContent className="p-0">
+                                        <div className="px-3 py-2 border-b border-blue-200 bg-blue-50">
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xs font-medium text-blue-900">
+                                              Code Changes {message.isApplyingChanges && '(Applying...)'}
+                                            </span>
+                                            {message.isApplyingChanges && (
+                                              <div className="flex items-center space-x-1">
+                                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-100"></div>
+                                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-200"></div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Gradient Animation Overlay */}
+                                        {message.isApplyingChanges && (
+                                          <div className="absolute inset-0 bg-gradient-to-b from-blue-100/50 via-transparent to-transparent animate-pulse z-10 pointer-events-none"></div>
+                                        )}
+
+                                        <div className="space-y-2 p-3">
+                                          {message.codeChanges.map((change, index) => (
+                                            <div 
+                                              key={index} 
+                                              className={`p-2 rounded border border-gray-200 transition-all duration-300 ${
+                                                message.isApplyingChanges ? 'bg-blue-50 animate-pulse' : 'bg-gray-50'
+                                              }`}
+                                            >
+                                              <div className="flex items-center justify-between mb-1">
+                                                <span className="text-xs font-medium text-gray-700">
+                                                  {change.type.charAt(0).toUpperCase() + change.type.slice(1)}
+                                                </span>
+                                                <span className="text-xs text-gray-500">
+                                                  {change.lineRange ? `Lines ${change.lineRange.start}-${change.lineRange.end}` : 
+                                                   change.position ? `Line ${change.position}` : ''}
+                                                </span>
+                                              </div>
+                                              <p className="text-xs text-gray-600 mb-2">{change.description}</p>
+                                              <pre className="text-xs bg-gray-900 text-gray-100 p-2 rounded overflow-x-auto max-h-20">
+                                                <code className="font-mono">{change.code}</code>
+                                              </pre>
+                                            </div>
+                                          ))}
+                                        </div>
+
+                                        {/* Accept/Reject Buttons */}
+                                        {!message.isApplyingChanges && (
+                                          <div className="px-3 py-2 border-t border-blue-200 bg-blue-50">
+                                            {message.isAccepted === true ? (
+                                              <div className="flex items-center text-xs text-green-600">
+                                                <Check className="w-3 h-3 mr-1" />
+                                                Changes accepted and applied
+                                              </div>
+                                            ) : message.isAccepted === false ? (
+                                              <div className="flex items-center text-xs text-red-600">
+                                                <X className="w-3 h-3 mr-1" />
+                                                Changes rejected and reverted
+                                              </div>
+                                            ) : (
+                                              <div className="flex space-x-2">
+                                                <Button
+                                                  size="sm"
+                                                  onClick={() => acceptCodeChanges(message.id)}
+                                                  className="bg-green-600 hover:bg-green-700 text-white h-6 px-2 text-xs"
+                                                >
+                                                  <Check className="w-3 h-3 mr-1" />
+                                                  Accept
+                                                </Button>
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  onClick={() => rejectCodeChanges(message.id)}
+                                                  className="border-red-300 text-red-600 hover:bg-red-50 h-6 px-2 text-xs"
+                                                >
+                                                  <X className="w-3 h-3 mr-1" />
+                                                  Reject
+                                                </Button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </CardContent>
+                                    </Card>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ))}
 
@@ -1088,6 +1412,32 @@ main();`;
 
                       {/* Input */}
                       <div className="border-t border-gray-200 p-3">
+                        {/* Codebase Context Toggle */}
+                        <div className="flex items-center justify-between mb-3 p-2 bg-gray-50 rounded-lg">
+                          <div className="flex items-center space-x-2">
+                            <Code className="w-4 h-4 text-gray-600" />
+                            <span className="text-sm font-medium text-gray-700">Include Codebase Context</span>
+                            {includeCodebaseContext && (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                <div className="w-2 h-2 bg-green-400 rounded-full mr-1"></div>
+                                Context Active
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => setIncludeCodebaseContext(!includeCodebaseContext)}
+                            className={`relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 ${
+                              includeCodebaseContext ? 'bg-gray-900' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`inline-block w-4 h-4 transform transition-transform bg-white rounded-full ${
+                                includeCodebaseContext ? 'translate-x-6' : 'translate-x-1'
+                              }`}
+                            />
+                          </button>
+                        </div>
+
                         {/* Toggle Buttons */}
                         <div className="flex items-center space-x-1 mb-3">
                           <button
@@ -1099,7 +1449,7 @@ main();`;
                             }`}
                           >
                             <MessageCircle className="w-3 h-3 mr-1" />
-                            Chat
+                            Ask
                           </button>
                           <button
                             onClick={() => setAssistantMode("agent")}
