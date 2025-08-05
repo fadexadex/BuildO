@@ -33,11 +33,16 @@ export interface CodeExecutionResponse {
 }
 
 export interface CodeChange {
-  type: 'replace' | 'insert' | 'append' | 'prepend';
+  type: 'replace' | 'insert' | 'append' | 'prepend' | 'delete';
   description: string;
   code: string;
-  lineRange?: { start: number; end: number }; // For replace operations
+  oldCode?: string; // For showing what's being replaced/deleted
+  lineRange?: { start: number; end: number }; // For replace/delete operations
   position?: number; // For insert operations
+  preview?: {
+    before: string; // Lines before the change for context
+    after: string;  // Lines after the change for context
+  };
 }
 
 export interface SimpleChatRequest {

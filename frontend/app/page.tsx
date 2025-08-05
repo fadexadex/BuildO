@@ -592,7 +592,7 @@ main();`;
     }
   }
 
-  // Apply code changes with gradient animation
+  // Apply code changes with enhanced gradient animation and visual feedback
   const applyCodeChangesWithAnimation = async (messageId: string, changes: CodeChange[], originalCode: string) => {
     // Mark message as applying changes
     setWorkspaceMessages((prev) => prev.map((msg) => 
@@ -605,11 +605,26 @@ main();`;
     try {
       let newCode = originalCode
       
-      // Apply changes in order
-      for (const change of changes) {
-        await new Promise(resolve => setTimeout(resolve, 300)) // Animation delay
+      // Apply changes in order with better animation timing
+      for (let i = 0; i < changes.length; i++) {
+        const change = changes[i]
+        
+        // Show which change is being applied
+        toast({
+          title: `Applying Change ${i + 1}/${changes.length}`,
+          description: change.description,
+          duration: 1000,
+        })
+        
+        // Apply the change with animation delay
+        await new Promise(resolve => setTimeout(resolve, 800)) // Longer delay for better UX
         newCode = applyCodeChange(newCode, change)
         setPlaygroundCode(newCode)
+        
+        // Small pause between changes
+        if (i < changes.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 400))
+        }
       }
 
       // Mark changes as applied
@@ -618,8 +633,9 @@ main();`;
       ))
 
       toast({
-        title: "Code Applied",
-        description: "AI changes have been applied. You can accept or reject them.",
+        title: "🎉 Code Applied Successfully",
+        description: `${changes.length} change(s) applied. You can accept or reject them.`,
+        duration: 3000,
       })
 
     } catch (error) {
@@ -635,7 +651,7 @@ main();`;
     }
   }
 
-  // Apply individual code change
+  // Apply individual code change with better line tracking
   const applyCodeChange = (code: string, change: CodeChange): string => {
     const lines = code.split('\n')
     
@@ -646,6 +662,14 @@ main();`;
           const afterLines = lines.slice(change.lineRange.end)
           const newLines = change.code.split('\n')
           return [...beforeLines, ...newLines, ...afterLines].join('\n')
+        }
+        return code
+        
+      case 'delete':
+        if (change.lineRange) {
+          const beforeLines = lines.slice(0, change.lineRange.start - 1)
+          const afterLines = lines.slice(change.lineRange.end)
+          return [...beforeLines, ...afterLines].join('\n')
         }
         return code
         
@@ -669,7 +693,7 @@ main();`;
     }
   }
 
-  // Accept code changes
+  // Accept code changes with enhanced feedback
   const acceptCodeChanges = (messageId: string) => {
     if (pendingCodeChanges && pendingCodeChanges.messageId === messageId) {
       setPendingCodeChanges(null)
@@ -677,24 +701,26 @@ main();`;
         msg.id === messageId ? { ...msg, isAccepted: true } : msg
       ))
       toast({
-        title: "Changes Accepted",
-        description: "Code changes have been accepted.",
+        title: "✅ Changes Accepted",
+        description: `${pendingCodeChanges.changes.length} code change(s) have been permanently applied.`,
+        duration: 2000,
       })
     }
   }
 
-  // Reject code changes
+  // Reject code changes with enhanced feedback
   const rejectCodeChanges = (messageId: string) => {
     if (pendingCodeChanges && pendingCodeChanges.messageId === messageId) {
-      // Restore original code
+      // Restore original code with animation
       setPlaygroundCode(pendingCodeChanges.originalCode)
       setPendingCodeChanges(null)
       setWorkspaceMessages((prev) => prev.map((msg) => 
         msg.id === messageId ? { ...msg, isAccepted: false } : msg
       ))
       toast({
-        title: "Changes Rejected",
-        description: "Original code has been restored.",
+        title: "🔄 Changes Rejected",
+        description: "Original code has been restored. All changes reverted.",
+        duration: 2000,
       })
     }
   }
@@ -1284,7 +1310,7 @@ main();`;
                               </div>
                             )}
 
-                            {/* New Code Changes Display */}
+                            {/* Enhanced Code Changes Display with Diff Visualization */}
                             {message.hasCodeChanges && message.codeChanges && (
                               <div className="flex justify-start">
                                 <div className="flex items-start space-x-2 max-w-[95%] w-full">
@@ -1318,27 +1344,80 @@ main();`;
                                           <div className="absolute inset-0 bg-gradient-to-b from-blue-100/50 via-transparent to-transparent animate-pulse z-10 pointer-events-none"></div>
                                         )}
 
-                                        <div className="space-y-2 p-3">
+                                        <div className="space-y-3 p-3">
                                           {message.codeChanges.map((change, index) => (
                                             <div 
                                               key={index} 
-                                              className={`p-2 rounded border border-gray-200 transition-all duration-300 ${
-                                                message.isApplyingChanges ? 'bg-blue-50 animate-pulse' : 'bg-gray-50'
+                                              className={`border border-gray-200 rounded-lg overflow-hidden transition-all duration-300 ${
+                                                message.isApplyingChanges ? 'bg-blue-50 animate-pulse' : 'bg-white'
                                               }`}
                                             >
-                                              <div className="flex items-center justify-between mb-1">
-                                                <span className="text-xs font-medium text-gray-700">
-                                                  {change.type.charAt(0).toUpperCase() + change.type.slice(1)}
-                                                </span>
-                                                <span className="text-xs text-gray-500">
-                                                  {change.lineRange ? `Lines ${change.lineRange.start}-${change.lineRange.end}` : 
-                                                   change.position ? `Line ${change.position}` : ''}
-                                                </span>
+                                              {/* Change Header */}
+                                              <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
+                                                <div className="flex items-center justify-between">
+                                                  <div className="flex items-center space-x-2">
+                                                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                                      change.type === 'delete' ? 'bg-red-100 text-red-800' :
+                                                      change.type === 'replace' ? 'bg-yellow-100 text-yellow-800' :
+                                                      'bg-green-100 text-green-800'
+                                                    }`}>
+                                                      {change.type.charAt(0).toUpperCase() + change.type.slice(1)}
+                                                    </span>
+                                                    <span className="text-xs text-gray-600">{change.description}</span>
+                                                  </div>
+                                                  <span className="text-xs text-gray-500">
+                                                    {change.lineRange ? `Lines ${change.lineRange.start}-${change.lineRange.end}` : 
+                                                     change.position ? `Line ${change.position}` : ''}
+                                                  </span>
+                                                </div>
                                               </div>
-                                              <p className="text-xs text-gray-600 mb-2">{change.description}</p>
-                                              <pre className="text-xs bg-gray-900 text-gray-100 p-2 rounded overflow-x-auto max-h-20">
-                                                <code className="font-mono">{change.code}</code>
-                                              </pre>
+
+                                              {/* Diff Display */}
+                                              <div className="text-xs font-mono">
+                                                {/* Context Before */}
+                                                {change.preview?.before && (
+                                                  <div className="px-3 py-1 bg-gray-50 text-gray-600 border-b border-gray-100">
+                                                    <div className="flex">
+                                                      <span className="w-8 text-gray-400 select-none">...</span>
+                                                      <span>{change.preview.before}</span>
+                                                    </div>
+                                                  </div>
+                                                )}
+
+                                                {/* Deletion (Red) */}
+                                                {(change.type === 'replace' || change.type === 'delete') && change.oldCode && (
+                                                  <div className="bg-red-50 border-l-4 border-red-400">
+                                                    {change.oldCode.split('\n').map((line, i) => (
+                                                      <div key={`del-${i}`} className="flex hover:bg-red-100">
+                                                        <span className="w-8 bg-red-200 text-red-600 text-center select-none">-</span>
+                                                        <span className="px-3 py-1 text-red-800 flex-1">{line}</span>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                )}
+
+                                                {/* Addition (Green) */}
+                                                {(change.type !== 'delete') && change.code && (
+                                                  <div className="bg-green-50 border-l-4 border-green-400">
+                                                    {change.code.split('\n').map((line, i) => (
+                                                      <div key={`add-${i}`} className="flex hover:bg-green-100">
+                                                        <span className="w-8 bg-green-200 text-green-600 text-center select-none">+</span>
+                                                        <span className="px-3 py-1 text-green-800 flex-1">{line}</span>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                )}
+
+                                                {/* Context After */}
+                                                {change.preview?.after && (
+                                                  <div className="px-3 py-1 bg-gray-50 text-gray-600 border-t border-gray-100">
+                                                    <div className="flex">
+                                                      <span className="w-8 text-gray-400 select-none">...</span>
+                                                      <span>{change.preview.after}</span>
+                                                    </div>
+                                                  </div>
+                                                )}
+                                              </div>
                                             </div>
                                           ))}
                                         </div>
@@ -1357,24 +1436,29 @@ main();`;
                                                 Changes rejected and reverted
                                               </div>
                                             ) : (
-                                              <div className="flex space-x-2">
-                                                <Button
-                                                  size="sm"
-                                                  onClick={() => acceptCodeChanges(message.id)}
-                                                  className="bg-green-600 hover:bg-green-700 text-white h-6 px-2 text-xs"
-                                                >
-                                                  <Check className="w-3 h-3 mr-1" />
-                                                  Accept
-                                                </Button>
-                                                <Button
-                                                  size="sm"
-                                                  variant="outline"
-                                                  onClick={() => rejectCodeChanges(message.id)}
-                                                  className="border-red-300 text-red-600 hover:bg-red-50 h-6 px-2 text-xs"
-                                                >
-                                                  <X className="w-3 h-3 mr-1" />
-                                                  Reject
-                                                </Button>
+                                              <div className="flex items-center justify-between">
+                                                <div className="text-xs text-gray-600">
+                                                  {message.codeChanges?.length} change(s) ready to apply
+                                                </div>
+                                                <div className="flex space-x-2">
+                                                  <Button
+                                                    size="sm"
+                                                    onClick={() => acceptCodeChanges(message.id)}
+                                                    className="bg-green-600 hover:bg-green-700 text-white h-6 px-2 text-xs"
+                                                  >
+                                                    <Check className="w-3 h-3 mr-1" />
+                                                    Accept All
+                                                  </Button>
+                                                  <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => rejectCodeChanges(message.id)}
+                                                    className="border-red-300 text-red-600 hover:bg-red-50 h-6 px-2 text-xs"
+                                                  >
+                                                    <X className="w-3 h-3 mr-1" />
+                                                    Reject All
+                                                  </Button>
+                                                </div>
                                               </div>
                                             )}
                                           </div>

@@ -99,6 +99,76 @@
     animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
 
+  /* Enhanced diff visualization */
+  .diff-line {
+    transition: background-color 0.2s ease-in-out;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    line-height: 1.4;
+  }
+
+  .diff-line:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+
+  .diff-addition {
+    background-color: #f0fff4;
+    border-left: 4px solid #22c55e;
+  }
+
+  .diff-deletion {
+    background-color: #fef2f2;
+    border-left: 4px solid #ef4444;
+  }
+
+  .diff-context {
+    background-color: #f9fafb;
+    border-left: 4px solid #e5e7eb;
+  }
+
+  .diff-line-number {
+    background-color: rgba(0, 0, 0, 0.05);
+    color: rgba(0, 0, 0, 0.5);
+    user-select: none;
+    width: 32px;
+    text-align: center;
+    font-size: 11px;
+    padding: 4px 0;
+  }
+
+  /* Smooth application animation */
+  .code-applying {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .code-applying::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(59, 130, 246, 0.2),
+      transparent
+    );
+    animation: applyingSweep 2s ease-in-out infinite;
+  }
+
+  @keyframes applyingSweep {
+    0% {
+      left: -100%;
+    }
+    50% {
+      left: 100%;
+    }
+    100% {
+      left: 100%;
+    }
+  }
+
   @keyframes gradientFlow {
     0%, 100% {
       opacity: 0.3;

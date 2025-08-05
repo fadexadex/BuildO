@@ -15,11 +15,16 @@ interface SimpleChatRequest {
 }
 
 interface CodeChange {
-  type: 'replace' | 'insert' | 'append' | 'prepend';
+  type: 'replace' | 'insert' | 'append' | 'prepend' | 'delete';
   description: string;
   code: string;
-  lineRange?: { start: number; end: number }; // For replace operations
+  oldCode?: string; // For showing what's being replaced/deleted
+  lineRange?: { start: number; end: number }; // For replace/delete operations
   position?: number; // For insert operations
+  preview?: {
+    before: string; // Lines before the change for context
+    after: string;  // Lines after the change for context
+  };
 }
 
 interface SimpleChatResponse {
@@ -74,20 +79,31 @@ When you want to make changes to code, use this special format at the end of you
 <CODE_CHANGES>
 [
   {{
-    "type": "replace|insert|append|prepend",
+    "type": "replace|insert|append|prepend|delete",
     "description": "What this change does",
-    "code": "the actual code",
+    "code": "the new code to add",
+    "oldCode": "the original code being replaced (for replace/delete only)",
     "lineRange": {{"start": 5, "end": 10}},
-    "position": 15
+    "position": 15,
+    "preview": {{
+      "before": "// context lines before change",
+      "after": "// context lines after change"
+    }}
   }}
 ]
 </CODE_CHANGES>
 
 Code change types:
-- "replace": Replace specific lines (needs lineRange)
-- "insert": Insert at specific position (needs position - line number)
-- "append": Add to end of file
-- "prepend": Add to beginning of file
+- "replace": Replace specific lines (needs lineRange, oldCode, and code)
+- "insert": Insert at specific position (needs position and code)
+- "append": Add to end of file (needs code)
+- "prepend": Add to beginning of file (needs code)
+- "delete": Remove specific lines (needs lineRange and oldCode)
+
+For replace/delete operations, always include:
+- "oldCode": The exact code being replaced/removed
+- "lineRange": The line numbers being affected
+- "preview": A few lines before/after for context
 
 Only suggest code changes when the user specifically asks for modifications, improvements, or fixes to their existing code.
 
