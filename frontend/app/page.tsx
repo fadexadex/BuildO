@@ -230,7 +230,27 @@ main();`;
       const welcomeMessage: Message = {
         id: "welcome",
         type: "assistant",
-        content: "Welcome! I'm your Hedera Copilot assistant powered by real blockchain tools. I can help you create tokens, transfer HBAR, check balances, create topics, and more. What would you like to build today?",
+        content: `Welcome! I'm your **Hedera Copilot** assistant powered by real blockchain tools. 
+
+🚀 **I can execute live transactions on Hedera using your connected account:**
+
+**💰 Token Operations (HTS):**
+• Create fungible & non-fungible tokens
+• Mint additional tokens & NFTs  
+• Airdrop tokens to accounts
+
+**💸 Account Operations:**
+• Transfer HBAR between accounts
+• Check account balances & information
+• Query token balances
+
+**📢 Consensus Service:**
+• Create consensus topics
+• Submit & retrieve topic messages
+
+All transactions will be executed using your connected Hedera account (**${accountId}**). 
+
+What would you like to build today?`,
         timestamp: new Date(),
         status: "success",
       }
@@ -239,7 +259,13 @@ main();`;
       const workspaceWelcome: Message = {
         id: "workspace-welcome",
         type: "assistant",
-        content: "I'm here to help with your Hedera development. Ask me questions or let me write real blockchain code for you.",
+        content: `Welcome to your **Hedera Development Workspace**! 
+
+I can help you with:
+• 💬 **Ask mode**: Questions about Hedera development, code analysis, and explanations
+• 🤖 **Agent mode**: Write and modify code with automatic application
+
+Your account (**${accountId}**) is connected and ready for development.`,
         timestamp: new Date(),
         status: "success",
       }
@@ -272,7 +298,7 @@ main();`;
     if (!privateKey) {
       newErrors.privateKey = "Private Key is required"
     } else if (!validatePrivateKey(privateKey)) {
-      newErrors.privateKey = "Invalid Private Key format (supports 64-char hex or 96-100 char DER format)"
+      newErrors.privateKey = "Invalid Private Key format (must be DER encoded: 96-100 characters starting with 3030, or 64-character hex)"
     }
 
     setCredentialErrors(newErrors)
@@ -1612,6 +1638,8 @@ main();`;
                 <Shield className="h-4 w-4 text-purple-600" />
                 <AlertDescription className="text-purple-800 text-sm">
                   <strong>Security Notice:</strong> Your credentials are stored in your browser's session storage (temporary) and are never transmitted to external servers.
+                  <br />
+                  <strong>Note:</strong> Use DER encoded private keys (starts with "3030") from your Hedera account. Raw hex keys (64 characters) are also supported.
                 </AlertDescription>
               </Alert>
 
@@ -1639,13 +1667,13 @@ main();`;
 
                 <div>
                   <Label htmlFor="privateKey" className="text-sm font-medium text-gray-900 mb-2 block">
-                    Private Key
+                    Private Key (DER Encoded)
                   </Label>
                   <div className="relative">
                     <Input
                       id="privateKey"
                       type={showPrivateKey ? "text" : "password"}
-                      placeholder="Enter your private key"
+                      placeholder="Enter your private key (DER encoded)"
                       value={privateKey}
                       onChange={(e) => {
                         setPrivateKey(e.target.value)
