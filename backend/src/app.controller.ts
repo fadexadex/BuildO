@@ -2,7 +2,8 @@ import express from "express";
 import dotenv from "dotenv";
 import { errorHandler } from "./middlewares/error.handler.js";
 import cors from "cors";  
-import agentRoutes from "./modules/agent/route.js"; 
+import agentRoutes from "./modules/agent/route.js";
+import runRoutes from "./modules/run/route.js"; 
 
 
 dotenv.config();
@@ -29,6 +30,7 @@ export class Server {
   private setUpRoutes() {
 
     this.apiRouter.use("/agent", agentRoutes);
+    this.apiRouter.use("/run", runRoutes);
     this.app.use(this.apiRouter);
     this.app.use(errorHandler);
   }

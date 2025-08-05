@@ -29,7 +29,7 @@ import {
   Clock,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { AgentAPI, ChatRequest } from "@/lib/api"
+import { AgentAPI, ChatRequest, CodeExecutionRequest } from "@/lib/api"
 
 interface Message {
   id: string
@@ -535,15 +535,11 @@ main();`;
     setPlaygroundOutput("🚀 Starting execution...\n");
 
     try {
-      const response = await fetch('/api/execute', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ code: playgroundCode }),
-      });
+      const request: CodeExecutionRequest = {
+        code: playgroundCode
+      };
 
-      const data = await response.json();
+      const data = await AgentAPI.executeCode(request);
       
       if (data.output) {
         setPlaygroundOutput(prev => prev + "\n" + data.output);

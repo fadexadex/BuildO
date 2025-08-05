@@ -21,6 +21,17 @@ export interface ChatResponse {
   };
 }
 
+export interface CodeExecutionRequest {
+  code: string;
+}
+
+export interface CodeExecutionResponse {
+  output: string;
+  exitCode: number;
+  success: boolean;
+  error?: string;
+}
+
 export class AgentAPI {
   static async chat(request: ChatRequest): Promise<ChatResponse> {
     try {
@@ -81,6 +92,29 @@ export class AgentAPI {
       return data;
     } catch (error) {
       console.error('Error clearing all sessions:', error);
+      throw error instanceof Error ? error : new Error('Unknown error occurred');
+    }
+  }
+
+  static async executeCode(request: CodeExecutionRequest): Promise<CodeExecutionResponse> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/run`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error executing code:', error);
       throw error instanceof Error ? error : new Error('Unknown error occurred');
     }
   }

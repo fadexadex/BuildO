@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { Request, Response } from 'express';
 import { spawn, exec } from 'child_process';
 import { writeFileSync, unlinkSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
@@ -7,12 +7,23 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
-export async function POST(request: NextRequest) {
+interface RunRequest {
+  code: string;
+}
+
+// Use the backend's existing node_modules (where @hashgraph/sdk is already installed)
+const BACKEND_NODE_MODULES = join(process.cwd(), 'node_modules');
+
+export async function executeCode(req: Request, res: Response) {
   try {
-    const { code } = await request.json();
+    const { code } = req.body as RunRequest;
 
     if (!code || typeof code !== 'string') {
-      return NextResponse.json({ error: 'Code is required' }, { status: 400 });
+      res.status(400).json({ 
+        error: 'Code is required',
+        success: false 
+      });
+      return;
     }
 
     // Create a unique temporary directory for this execution
@@ -21,22 +32,7 @@ export async function POST(request: NextRequest) {
     mkdirSync(tempDir, { recursive: true });
 
     try {
-      // Create package.json for the temporary project
-      const packageJson = {
-        name: "hedera-playground-temp",
-        version: "1.0.0",
-        type: "commonjs",
-        dependencies: {
-          "@hashgraph/sdk": "^2.64.5"
-        }
-      };
-      
-      writeFileSync(join(tempDir, 'package.json'), JSON.stringify(packageJson, null, 2));
-
-      // Install dependencies (quick install of just Hedera SDK)
-      await execAsync('npm install --production --silent', { cwd: tempDir });
-
-      // Create the execution file
+      // Create the execution file directly (no package.json or npm install needed)
       const tempFile = join(tempDir, 'main.js');
       
       // Wrap the code with better error handling and output capture
@@ -44,46 +40,67 @@ export async function POST(request: NextRequest) {
 const originalConsole = { ...console };
 const outputs = [];
 
-// Override console methods to capture output
-console.log = (...args) => {
-  const message = args.map(arg => {
-    if (typeof arg === 'object' && arg !== null) {
+// Helper function to safely stringify objects
+function safeStringify(arg) {
+  if (typeof arg === 'object' && arg !== null) {
+    try {
+      // First try JSON.stringify
+      return JSON.stringify(arg, null, 2);
+    } catch (e) {
+      // For complex objects, show useful info
       try {
-        return JSON.stringify(arg, null, 2);
-      } catch (e) {
-        return String(arg);
+        const constructorName = arg.constructor ? arg.constructor.name : 'Object';
+        
+        // Special handling for common SDK objects
+        if (constructorName === 'Client') {
+          return '[Hedera Client Instance]';
+        } else if (constructorName === 'AccountId') {
+          return arg.toString();
+        } else if (constructorName === 'PrivateKey') {
+          return '[PrivateKey Instance]';
+        } else if (constructorName !== 'Object') {
+          return \`[\${constructorName} Instance]\`;
+        }
+        
+        // Try toString as fallback
+        const stringified = arg.toString();
+        return stringified === '[object Object]' ? \`[\${constructorName}]\` : stringified;
+      } catch (e2) {
+        return '[Complex Object]';
       }
     }
-    return String(arg);
-  }).join(' ');
+  }
+  return String(arg);
+}
+
+// Override console methods with improved object handling
+console.log = (...args) => {
+  const message = args.map(safeStringify).join(' ');
   outputs.push({ type: 'log', message, timestamp: new Date().toISOString() });
   originalConsole.log(...args);
 };
 
 console.error = (...args) => {
-  const message = args.map(String).join(' ');
+  const message = args.map(safeStringify).join(' ');
   outputs.push({ type: 'error', message, timestamp: new Date().toISOString() });
   originalConsole.error(...args);
 };
 
 console.warn = (...args) => {
-  const message = args.map(String).join(' ');
+  const message = args.map(safeStringify).join(' ');
   outputs.push({ type: 'warn', message, timestamp: new Date().toISOString() });
   originalConsole.warn(...args);
 };
 
-// Capture unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Promise Rejection:', reason);
 });
 
-// Capture uncaught exceptions
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error.message);
   process.exit(1);
 });
 
-// Execute the user code
 (async () => {
   try {
     ${code}
@@ -93,30 +110,34 @@ process.on('uncaughtException', (error) => {
       console.error('Stack trace:', error.stack);
     }
   } finally {
-    // Output all captured logs as JSON
     setTimeout(() => {
       process.stdout.write('__OUTPUT_START__' + JSON.stringify(outputs) + '__OUTPUT_END__');
       process.exit(0);
-    }, 1000); // Give async operations time to complete
+    }, 1000);
   }
 })();
 `;
 
       writeFileSync(tempFile, wrappedCode);
 
-      return new Promise((resolve) => {
+      // Execute the code and return a promise
+      const result = await new Promise<{ output: string; exitCode: number; success: boolean }>((resolve) => {
         const timeout = setTimeout(() => {
           cleanup();
-          resolve(NextResponse.json({ 
-            error: 'Execution timeout (45 seconds)', 
-            output: '⏰ Code execution timed out after 45 seconds\nThis may happen with long-running operations or infinite loops.' 
-          }, { status: 408 }));
+          resolve({ 
+            output: '⏰ Code execution timed out after 45 seconds\nThis may happen with long-running operations or infinite loops.',
+            exitCode: 124,
+            success: false
+          });
         }, 45000);
 
         const nodeProcess = spawn('node', [tempFile], {
           cwd: tempDir,
           stdio: ['pipe', 'pipe', 'pipe'],
-          env: { ...process.env, NODE_PATH: join(tempDir, 'node_modules') }
+          env: { 
+            ...process.env, 
+            NODE_PATH: BACKEND_NODE_MODULES  // Use backend's node_modules
+          }
         });
 
         let output = '';
@@ -133,8 +154,7 @@ process.on('uncaughtException', (error) => {
         const cleanup = () => {
           try {
             unlinkSync(tempFile);
-            unlinkSync(join(tempDir, 'package.json'));
-            // Note: Not removing node_modules for performance, they'll be cleaned up by OS
+            // No package.json to clean up anymore
           } catch (err) {
             // Ignore cleanup errors
           }
@@ -182,42 +202,43 @@ process.on('uncaughtException', (error) => {
             formattedOutput = '✅ Code executed successfully (no output generated)';
           }
 
-          resolve(NextResponse.json({ 
+          resolve({ 
             output: formattedOutput,
-            exitCode,
+            exitCode: exitCode || 0,
             success: exitCode === 0
-          }));
+          });
         });
 
         nodeProcess.on('error', (error) => {
           clearTimeout(timeout);
           cleanup();
 
-          resolve(NextResponse.json({ 
-            error: error.message, 
-            output: `❌ Execution failed: ${error.message}`
-          }, { status: 500 }));
+          resolve({ 
+            output: `❌ Execution failed: ${error.message}`,
+            exitCode: 1,
+            success: false
+          });
         });
       });
 
+      res.json({
+        ...result,
+        success: result.success
+      });
+
     } catch (setupError) {
-      // Cleanup on setup error
-      try {
-        unlinkSync(join(tempDir, 'package.json'));
-      } catch (err) {
-        // Ignore
-      }
-      
-      return NextResponse.json({ 
+      res.status(500).json({ 
         error: 'Setup failed', 
-        output: `❌ Failed to setup execution environment: ${setupError instanceof Error ? setupError.message : 'Unknown error'}`
-      }, { status: 500 });
+        output: `❌ Failed to setup execution environment: ${setupError instanceof Error ? setupError.message : 'Unknown error'}`,
+        success: false
+      });
     }
 
   } catch (error) {
-    return NextResponse.json({ 
+    res.status(500).json({ 
       error: 'Internal server error', 
-      output: `❌ Server error: ${error instanceof Error ? error.message : 'Unknown error'}`
-    }, { status: 500 });
+      output: `❌ Server error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      success: false
+    });
   }
-} 
+}
