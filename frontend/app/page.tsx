@@ -31,9 +31,11 @@ import {
   Plus,
   Save,
   Settings,
+  Info,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { AgentAPI, ChatRequest, CodeExecutionRequest, SimpleChatAPI, SimpleChatRequest, CodeChange } from "@/lib/api"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 interface Message {
   id: string
@@ -88,6 +90,13 @@ const account = checkBalance('0.0.123');`)
   const [showPrivateKey, setShowPrivateKey] = useState(false)
   const [balance, setBalance] = useState("127.45")
   const [credentialErrors, setCredentialErrors] = useState<{ accountId?: string; privateKey?: string }>({})
+  
+  // Modal state variables
+  const [tempAccountId, setTempAccountId] = useState("")
+  const [tempPrivateKey, setTempPrivateKey] = useState("")
+  const [accountIdError, setAccountIdError] = useState("")
+  const [privateKeyError, setPrivateKeyError] = useState("")
+  const [isConnecting, setIsConnecting] = useState(false)
 
   // Workspace specific states
   const [workspaceMessages, setWorkspaceMessages] = useState<Message[]>([])
@@ -553,24 +562,31 @@ Your account (**${accountId}**) is connected and ready for development.`,
     return rawHexPattern.test(key) || derPattern.test(key)
   }
 
-  const handleConnect = () => {
-    const newErrors: { accountId?: string; privateKey?: string } = {}
+  const handleConnect = async () => {
+    setIsConnecting(true)
+    setAccountIdError("")
+    setPrivateKeyError("")
 
-    if (!accountId) {
-      newErrors.accountId = "Account ID is required"
-    } else if (!validateAccountId(accountId)) {
-      newErrors.accountId = "Invalid Account ID format (expected: 0.0.6255888)"
+    let hasErrors = false
+
+    if (!tempAccountId) {
+      setAccountIdError("Account ID is required")
+      hasErrors = true
+    } else if (!validateAccountId(tempAccountId)) {
+      setAccountIdError("Invalid Account ID format (expected: 0.0.123456)")
+      hasErrors = true
     }
 
-    if (!privateKey) {
-      newErrors.privateKey = "Private Key is required"
-    } else if (!validatePrivateKey(privateKey)) {
-      newErrors.privateKey = "Invalid Private Key format (must be DER encoded: 96-100 characters starting with 3030, or 64-character hex)"
+    if (!tempPrivateKey) {
+      setPrivateKeyError("Private Key is required")
+      hasErrors = true
+    } else if (!validatePrivateKey(tempPrivateKey)) {
+      setPrivateKeyError("Invalid Private Key format")
+      hasErrors = true
     }
 
-    setCredentialErrors(newErrors)
-
-    if (Object.keys(newErrors).length > 0) {
+    if (hasErrors) {
+      setIsConnecting(false)
       toast({
         title: "Invalid credentials",
         description: "Please check your Account ID and Private Key format.",
@@ -579,18 +595,32 @@ Your account (**${accountId}**) is connected and ready for development.`,
       return
     }
 
-    // Store credentials in session storage for consistency with agent page
-    sessionStorage.setItem("hedera_account_id", accountId)
-    sessionStorage.setItem("hedera_private_key", privateKey)
-    
-    // Connect the account
-    setIsConnected(true)
-    setShowWalletModal(false)
-    setCredentialErrors({}) // Clear any previous errors
-    toast({
-      title: "Connected",
-      description: "Your Hedera account is now connected.",
-    })
+    try {
+      // Set the actual values
+      setAccountId(tempAccountId)
+      setPrivateKey(tempPrivateKey)
+      
+      // Store credentials in session storage
+      sessionStorage.setItem("hedera_account_id", tempAccountId)
+      sessionStorage.setItem("hedera_private_key", tempPrivateKey)
+      
+      // Connect the account
+      setIsConnected(true)
+      setShowWalletModal(false)
+      
+      toast({
+        title: "Connected",
+        description: "Successfully connected to your Hedera account.",
+      })
+    } catch (error) {
+      toast({
+        title: "Connection failed",
+        description: "Failed to connect to your Hedera account.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsConnecting(false)
+    }
   }
 
   const handleDisconnect = () => {
@@ -1628,21 +1658,21 @@ Your account (**${accountId}**) is connected and ready for development.`,
   return (
     <div className="h-screen flex flex-col bg-white">
       {/* Header */}
-      <div className="flex-shrink-0 border-b border-gray-200 px-6 py-4">
+      <div className="flex-shrink-0 border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-8">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center">
-                <span className="text-white font-semibold text-sm">B</span>
+          <div className="flex items-center space-x-4 sm:space-x-8">
+            <div className="flex items-center space-x-2 sm:space-x-3">
+              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gray-900 rounded-lg flex items-center justify-center">
+                <span className="text-white font-semibold text-xs sm:text-sm">B</span>
               </div>
-              <span className="text-lg font-medium text-gray-900">BuildO</span>
+              <span className="text-base sm:text-lg font-medium text-gray-900">BuildO</span>
             </div>
 
             {/* Mode Tabs */}
             <div className="flex items-center space-x-1">
               <button
                 onClick={() => setMode("agent")}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                className={`px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-md transition-colors ${
                   mode === "agent" ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
                 }`}
               >
@@ -1650,7 +1680,7 @@ Your account (**${accountId}**) is connected and ready for development.`,
               </button>
               <button
                 onClick={() => setMode("workspace")}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                className={`px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-md transition-colors ${
                   mode === "workspace"
                     ? "bg-gray-100 text-gray-900"
                     : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
@@ -1661,20 +1691,28 @@ Your account (**${accountId}**) is connected and ready for development.`,
             </div>
           </div>
 
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2 sm:space-x-4">
             {isConnected ? (
-              <div className="flex items-center space-x-3">
-                <div className="flex items-center space-x-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-md">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-sm font-mono text-green-700">
-                    {accountId.split(".").slice(0, 2).join(".")}.***
+              <div className="flex items-center space-x-2 sm:space-x-3">
+                {/* Connection Status - Responsive */}
+                <div className="flex items-center space-x-1 sm:space-x-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-green-50 border border-green-200 rounded-md">
+                  <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full"></div>
+                  <span className="text-xs sm:text-sm font-mono text-green-700">
+                    {/* Show full on larger screens, abbreviated on mobile */}
+                    <span className="hidden sm:inline">
+                      {accountId.split(".").slice(0, 2).join(".")}.***
+                    </span>
+                    <span className="sm:hidden">
+                      {accountId.split(".")[2] ? `...${accountId.split(".")[2]}` : accountId}
+                    </span>
                   </span>
-                  <Separator orientation="vertical" className="h-3" />
-                  <span className="text-sm font-medium text-green-700">{balance} ℏ</span>
+                  <Separator orientation="vertical" className="h-2 sm:h-3" />
+                  <span className="text-xs sm:text-sm font-medium text-green-700">{balance} ℏ</span>
                 </div>
-                {/* Session Status Indicators */}
+
+                {/* Session Status Indicators - Hidden on small screens */}
                 {(agentSessionId || workspaceSessionId) && (
-                  <div className="flex items-center space-x-1 px-2 py-1 bg-blue-50 border border-blue-200 rounded-md">
+                  <div className="hidden sm:flex items-center space-x-1 px-2 py-1 bg-blue-50 border border-blue-200 rounded-md">
                     <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
                     <span className="text-xs text-blue-700">
                       {mode === "agent" && agentSessionId ? "Chat Active" : 
@@ -1682,21 +1720,27 @@ Your account (**${accountId}**) is connected and ready for development.`,
                     </span>
                   </div>
                 )}
-                {/* Clear Conversation Button */}
-                {(agentSessionId || workspaceSessionId) && (
-                  <Button variant="outline" size="sm" onClick={clearConversation}>
-                    <Trash2 className="w-3 h-3 mr-1" />
-                    Clear Chat
+
+                {/* Action Buttons - Responsive */}
+                <div className="flex items-center space-x-1 sm:space-x-2">
+                  {/* Clear Conversation Button */}
+                  {(agentSessionId || workspaceSessionId) && (
+                    <Button variant="outline" size="sm" onClick={clearConversation} className="h-7 sm:h-8 px-2 sm:px-3">
+                      <Trash2 className="w-3 h-3 sm:mr-1" />
+                      <span className="hidden sm:inline">Clear Chat</span>
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" onClick={handleDisconnect} className="h-7 sm:h-8 px-2 sm:px-3">
+                    <span className="hidden sm:inline">Disconnect</span>
+                    <span className="sm:hidden">×</span>
                   </Button>
-                )}
-                <Button variant="outline" size="sm" onClick={handleDisconnect}>
-                  Disconnect
-                </Button>
+                </div>
               </div>
             ) : (
-              <Button onClick={() => setShowWalletModal(true)} className="bg-gray-900 hover:bg-gray-800 text-white">
-                <Wallet className="w-4 h-4 mr-2" />
-                  Connect Hedera Account
+              <Button onClick={() => setShowWalletModal(true)} className="bg-gray-900 hover:bg-gray-800 text-white text-xs sm:text-sm px-3 sm:px-4 py-2">
+                <Wallet className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Connect Hedera Account</span>
+                <span className="sm:hidden">Connect</span>
               </Button>
             )}
           </div>
@@ -1709,16 +1753,16 @@ Your account (**${accountId}**) is connected and ready for development.`,
           /* Agent Mode */
           <div className="flex-1 flex flex-col min-h-0">
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-6 py-6">
-              <div className="max-w-4xl mx-auto space-y-6">
+            <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 sm:py-6">
+              <div className="max-w-full sm:max-w-4xl mx-auto space-y-4 sm:space-y-6">
                 {messages.map((message) => (
                   <div key={message.id} className="space-y-4">
                     {/* Message */}
                     <div className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}>
-                      <div className={`flex items-start space-x-3 max-w-[80%]`}>
+                      <div className={`flex items-start space-x-2 sm:space-x-3 max-w-[95%] sm:max-w-[80%]`}>
                         {message.type === "assistant" && (
                           <div className="flex-shrink-0 mt-1">
-                            <div className="w-8 h-8 bg-gray-900 rounded-full flex items-center justify-center">
+                            <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gray-900 rounded-full flex items-center justify-center">
                               <span className="text-white font-semibold text-xs">B</span>
                             </div>
                           </div>
@@ -1726,7 +1770,7 @@ Your account (**${accountId}**) is connected and ready for development.`,
 
                         <div className={`flex-1 ${message.type === "user" ? "flex justify-end" : ""}`}>
                           <div
-                            className={`rounded-lg px-4 py-3 ${
+                            className={`rounded-lg px-3 sm:px-4 py-2 sm:py-3 ${
                               message.type === "user"
                                 ? "bg-blue-600 text-white max-w-fit"
                                 : "bg-gray-50 text-gray-900 w-full"
@@ -1736,113 +1780,76 @@ Your account (**${accountId}**) is connected and ready for development.`,
                             
                             {/* Transaction Data */}
                             {message.transactionData && (
-                              <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                                <div className="flex items-center text-green-800 text-sm font-medium mb-2">
-                                  <Check className="w-4 h-4 mr-2" />
+                              <div className="mt-3 p-2 sm:p-3 bg-green-50 border border-green-200 rounded-lg">
+                                <div className="flex items-center text-green-800 text-xs sm:text-sm font-medium mb-2">
+                                  <Check className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
                                   {message.transactionData.action}
                                 </div>
                                 <div className="space-y-1">
                                   {message.transactionData.details.map((detail, index) => (
-                                    <p key={index} className="text-xs text-green-700">{detail}</p>
+                                    <p key={index} className="text-xs text-green-700 break-words">{detail}</p>
                                   ))}
                                   {message.transactionData.transactionHash && (
-                                    <p className="text-xs text-green-700">
-                                      Transaction Hash: {message.transactionData.transactionHash}
-                                    </p>
-                                  )}
-                                  {message.transactionData.estimatedCost && (
-                                  <p className="text-xs text-green-700">
-                                    Network Fee: {message.transactionData.estimatedCost}
-                                  </p>
+                                    <p className="text-xs text-green-700 break-all">
+                                      Transaction Hash: {message.transactionData.transactionHash}</p>
                                   )}
                                 </div>
                               </div>
                             )}
-                            
-                            <div className="flex items-center justify-between mt-2">
-                            <p
-                                className={`text-xs opacity-70 ${
-                                message.type === "user" ? "text-blue-100" : "text-gray-500"
-                              }`}
-                            >
-                              {message.timestamp.toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </p>
-                              {message.type === "assistant" && message.status && (
-                                <div className={`text-xs flex items-center ${
-                                  message.status === "success" ? "text-green-600" : 
-                                  message.status === "error" ? "text-red-600" : "text-yellow-600"
-                                }`}>
-                                  {message.status === "success" && <Check className="w-3 h-3 mr-1" />}
-                                  {message.status === "error" && <X className="w-3 h-3 mr-1" />}
-                                  {message.status === "pending" && <Clock className="w-3 h-3 mr-1" />}
-                                  {message.status}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Code Changes */}
+                    {message.codeChanges && message.codeChanges.length > 0 && (
+                      <div className="ml-0 sm:ml-11">
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center text-blue-800 text-xs sm:text-sm font-medium">
+                              <Code className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+                              Code Changes Proposed ({message.codeChanges.length})
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              {message.isApplyingChanges ? (
+                                <div className="flex items-center text-blue-600 text-xs">
+                                  <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mr-2" />
+                                  Applying...
+                                </div>
+                              ) : message.isAccepted ? (
+                                <span className="text-green-600 text-xs font-medium">✓ Applied</span>
+                              ) : (
+                                <div className="flex space-x-2">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => applyCodeChangesWithAnimation(message.id, message.codeChanges!, message.originalCode || playgroundCode)}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white h-6 sm:h-7 px-2 sm:px-3 text-xs"
+                                  >
+                                    Apply Changes
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => rejectCodeChanges(message.id)}
+                                    className="h-6 sm:h-7 px-2 sm:px-3 text-xs"
+                                  >
+                                    Reject
+                                  </Button>
                                 </div>
                               )}
                             </div>
                           </div>
-                        </div>
-
-                        {message.type === "user" && (
-                          <div className="flex-shrink-0 mt-1">
-                            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                              <User className="w-4 h-4 text-white" />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Code Blocks */}
-                    {message.codeBlocks && (
-                      <div className="flex justify-start">
-                        <div className="flex items-start space-x-3 max-w-[90%] w-full">
-                          <div className="flex-shrink-0 mt-1">
-                            <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                              <Code className="w-4 h-4 text-gray-600" />
-                            </div>
-                          </div>
-                          <div className="w-full">
-                            <Tabs defaultValue={message.codeBlocks[0]?.language} className="w-full">
-                              <TabsList className="grid w-fit grid-cols-3 mb-4">
-                                {message.codeBlocks.map((block) => (
-                                  <TabsTrigger key={block.language} value={block.language} className="text-xs">
-                                    {block.language === "javascript"
-                                      ? "JavaScript"
-                                      : block.language === "java"
-                                        ? "Java"
-                                        : "Rust"}
-                                  </TabsTrigger>
-                                ))}
-                              </TabsList>
-                              {message.codeBlocks.map((block) => (
-                                <TabsContent key={block.language} value={block.language}>
-                                  <Card className="border-gray-200">
-                                    <CardContent className="p-0">
-                                      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50">
-                                        <span className="text-sm font-medium text-gray-700">{block.title}</span>
-                                      </div>
-                                      <div className="relative">
-                                        <pre className="p-4 text-sm overflow-x-auto bg-gray-900 text-gray-100 max-h-80 overflow-y-auto">
-                                          <code className="font-mono">{block.code}</code>
-                                        </pre>
-                                      </div>
-                                      <div className="px-4 py-2 border-t border-gray-200 bg-gray-50">
-                                        <Button
-                                          size="sm"
-                                          onClick={() => addToEditor(block.code)}
-                                          className="bg-gray-900 hover:bg-gray-800 text-white"
-                                        >
-                                          Add to Workspace
-                                        </Button>
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                </TabsContent>
-                              ))}
-                            </Tabs>
+                          <div className="space-y-2 sm:space-y-3">
+                            {message.codeChanges.map((change, index) => (
+                              <div key={index} className="bg-white border border-blue-200 rounded p-2 sm:p-3">
+                                <div className="text-xs sm:text-sm font-medium text-blue-800 mb-2">
+                                  {change.type.charAt(0).toUpperCase() + change.type.slice(1)}: {change.description}
+                                </div>
+                                <pre className="text-xs bg-gray-50 p-2 rounded border overflow-x-auto">
+                                  <code>{change.code}</code>
+                                </pre>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       </div>
@@ -1874,9 +1881,9 @@ Your account (**${accountId}**) is connected and ready for development.`,
             </div>
 
             {/* Input */}
-            <div className="flex-shrink-0 border-t border-gray-200 px-6 py-4">
-              <div className="max-w-4xl mx-auto">
-                <div className="flex space-x-3">
+            <div className="flex-shrink-0 border-t border-gray-200 px-3 sm:px-6 py-3 sm:py-4">
+              <div className="max-w-full sm:max-w-4xl mx-auto">
+                <div className="flex space-x-2 sm:space-x-3">
                   <Textarea
                     placeholder={
                       isConnected ? "Ask me to help you build on Hedera..." : "Connect your wallet to start building..."
@@ -1889,15 +1896,15 @@ Your account (**${accountId}**) is connected and ready for development.`,
                         handleSendMessage()
                       }
                     }}
-                    className="flex-1 min-h-[48px] max-h-32 resize-none border-gray-300 focus:border-gray-400 focus:ring-gray-400"
+                    className="flex-1 min-h-[40px] sm:min-h-[48px] max-h-24 sm:max-h-32 resize-none border-gray-300 focus:border-gray-400 focus:ring-gray-400 text-sm sm:text-base"
                     disabled={!isConnected || isLoading}
                   />
                   <Button
                     onClick={handleSendMessage}
                     disabled={!inputValue.trim() || !isConnected || isLoading}
-                    className="bg-gray-900 hover:bg-gray-800 text-white px-6 h-[48px]"
+                    className="bg-gray-900 hover:bg-gray-800 text-white px-4 sm:px-6 h-[40px] sm:h-[48px]"
                   >
-                    <Send className="w-4 h-4" />
+                    <Send className="w-3 h-3 sm:w-4 sm:h-4" />
                   </Button>
                 </div>
               </div>
@@ -1905,78 +1912,78 @@ Your account (**${accountId}**) is connected and ready for development.`,
           </div>
         ) : (
           /* Workspace Mode */
-          <div className="flex-1 flex flex-col min-h-0 px-4 py-4">
+          <div className="flex-1 flex flex-col min-h-0 px-2 sm:px-4 py-2 sm:py-4">
             <div className="max-w-full mx-auto w-full flex-1 flex flex-col min-h-0">
-              <div className="grid grid-cols-12 gap-4 flex-1 min-h-0">
+              <div className="flex flex-col lg:grid lg:grid-cols-12 gap-3 sm:gap-4 flex-1 min-h-0">
                 {/* Code Editor */}
-                <div className="col-span-8 flex flex-col min-h-0">
+                <div className="lg:col-span-8 flex flex-col min-h-0 order-1 lg:order-1">
                   {/* Editor */}
                   <Card 
                     className="border-gray-200 flex flex-col min-h-0"
-                    style={{ height: `${editorHeight}px` }}
+                    style={{ height: window.innerWidth < 1024 ? 'auto' : `${editorHeight}px` }}
                     ref={editorContainerRef}
                   >
                     <CardContent className="p-0 flex-1 flex flex-col min-h-0">
-                      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
-                        <div className="flex items-center space-x-4">
-                          <span className="text-sm font-medium text-gray-700">JavaScript Editor</span>
-                          <div className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-md font-medium">
+                      <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200 bg-gray-50">
+                        <div className="flex items-center space-x-2 sm:space-x-4">
+                          <span className="text-xs sm:text-sm font-medium text-gray-700">JavaScript Editor</span>
+                          <div className="px-1.5 sm:px-2 py-0.5 sm:py-1 bg-yellow-100 text-yellow-800 text-xs rounded-md font-medium">
                             Hedera SDK Ready
                           </div>
                         </div>
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-1 sm:space-x-2">
                           <Button
                             onClick={copyCodeToClipboard}
                             variant="outline"
                             size="sm"
-                            className="h-8 px-3 bg-transparent"
+                            className="h-6 sm:h-8 px-2 sm:px-3 bg-transparent text-xs"
                             disabled={!playgroundCode.trim()}
                             title="Copy code to clipboard"
                           >
-                            <Copy className="w-3 h-3 mr-2" />
-                            Copy
+                            <Copy className="w-3 h-3 sm:mr-2" />
+                            <span className="hidden sm:inline">Copy</span>
                           </Button>
                           <Button
                             onClick={saveCodeToFile}
                             variant="outline"
                             size="sm"
-                            className="h-8 px-3 bg-transparent"
+                            className="h-6 sm:h-8 px-2 sm:px-3 bg-transparent text-xs"
                             disabled={!playgroundCode.trim()}
                             title="Save code as .js file"
                           >
-                            <Save className="w-3 h-3 mr-2" />
-                            Save
+                            <Save className="w-3 h-3 sm:mr-2" />
+                            <span className="hidden sm:inline">Save</span>
                           </Button>
                           <Button
                             onClick={clearCode}
                             variant="outline"
                             size="sm"
-                            className="h-8 px-3 bg-transparent"
+                            className="h-6 sm:h-8 px-2 sm:px-3 bg-transparent text-xs"
                             disabled={!playgroundCode.trim()}
                           >
-                            <Trash2 className="w-3 h-3 mr-2" />
-                            Clear
+                            <Trash2 className="w-3 h-3 sm:mr-2" />
+                            <span className="hidden sm:inline">Clear</span>
                           </Button>
                           <Button
                             onClick={executeCode}
                             disabled={!playgroundCode.trim() || isExecuting}
-                            className="bg-gray-900 hover:bg-gray-800 text-white h-8 px-3"
+                            className="bg-gray-900 hover:bg-gray-800 text-white h-6 sm:h-8 px-2 sm:px-3 text-xs"
                           >
                             {isExecuting ? (
                               <>
-                                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                                Executing
+                                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin sm:mr-2" />
+                                <span className="hidden sm:inline">Executing</span>
                               </>
                             ) : (
                               <>
-                                <Play className="w-3 h-3 mr-2" />
-                                Execute
+                                <Play className="w-3 h-3 sm:mr-2" />
+                                <span className="hidden sm:inline">Execute</span>
                               </>
                             )}
                           </Button>
                         </div>
                       </div>
-                      <div className="flex-1 min-h-0">
+                      <div className="flex-1 min-h-0" style={{ minHeight: window.innerWidth < 1024 ? '250px' : 'auto' }}>
                         <Editor
                           height="100%"
                           defaultLanguage="javascript"
@@ -1993,8 +2000,8 @@ Your account (**${accountId}**) is connected and ready for development.`,
                           }}
                           theme="vs-dark"
                           options={{
-                            minimap: { enabled: false },
-                            fontSize: 14,
+                            minimap: { enabled: window.innerWidth >= 1024 },
+                            fontSize: window.innerWidth >= 640 ? 14 : 12,
                             fontFamily: "'JetBrains Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
                             lineNumbers: "on",
                             roundedSelection: false,
@@ -2015,8 +2022,8 @@ Your account (**${accountId}**) is connected and ready for development.`,
                               useShadows: false,
                               verticalHasArrows: false,
                               horizontalHasArrows: false,
-                              verticalScrollbarSize: 10,
-                              horizontalScrollbarSize: 10
+                              verticalScrollbarSize: window.innerWidth >= 640 ? 10 : 8,
+                              horizontalScrollbarSize: window.innerWidth >= 640 ? 10 : 8
                             },
                             overviewRulerBorder: false,
                             hideCursorInOverviewRuler: true,
@@ -2027,9 +2034,9 @@ Your account (**${accountId}**) is connected and ready for development.`,
                     </CardContent>
                   </Card>
 
-                  {/* Drag Handle */}
+                  {/* Drag Handle - Only show on desktop */}
                   <div
-                    className={`h-2 bg-gray-100 border-t border-b border-gray-200 cursor-row-resize flex items-center justify-center group hover:bg-gray-200 transition-all duration-200 ${
+                    className={`hidden lg:block h-2 bg-gray-100 border-t border-b border-gray-200 cursor-row-resize flex items-center justify-center group hover:bg-gray-200 transition-all duration-200 ${
                       isDragging ? 'bg-blue-100 border-blue-300' : ''
                     }`}
                     onMouseDown={handleMouseDown}
@@ -2042,23 +2049,23 @@ Your account (**${accountId}**) is connected and ready for development.`,
                   </div>
 
                   {/* Terminal */}
-                  <Card className="border-gray-200 flex-1 flex flex-col min-h-0" style={{ minHeight: '150px' }}>
+                  <Card className="border-gray-200 flex-1 flex flex-col min-h-0" style={{ minHeight: window.innerWidth < 1024 ? '150px' : '150px' }}>
                     <CardContent className="p-0 flex-1 flex flex-col min-h-0">
-                      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+                      <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200 bg-gray-50">
                         <div className="flex items-center">
-                          <Terminal className="w-4 h-4 mr-2 text-gray-600" />
-                          <span className="text-sm font-medium text-gray-700">Output</span>
+                          <Terminal className="w-3 h-3 sm:w-4 sm:h-4 mr-2 text-gray-600" />
+                          <span className="text-xs sm:text-sm font-medium text-gray-700">Output</span>
                         </div>
                         <Button
                           onClick={() => setPlaygroundOutput("")}
                           variant="outline"
                           size="sm"
-                          className="h-6 px-2 text-xs"
+                          className="h-5 sm:h-6 px-1.5 sm:px-2 text-xs"
                         >
                           Clear
                         </Button>
                       </div>
-                      <div className="flex-1 p-4 bg-gray-900 text-green-400 font-mono text-sm overflow-y-auto min-h-0">
+                      <div className="flex-1 p-2 sm:p-4 bg-gray-900 text-green-400 font-mono text-xs sm:text-sm overflow-y-auto min-h-0">
                         <pre className="whitespace-pre-wrap">
                           {playgroundOutput ||
                             "Ready to execute JavaScript code...\n\nClick 'Execute' to run your Hedera code and see output here."}
@@ -2069,33 +2076,33 @@ Your account (**${accountId}**) is connected and ready for development.`,
                 </div>
 
                 {/* Chat Assistant */}
-                <div className="col-span-4 flex flex-col min-h-0">
+                <div className="lg:col-span-4 flex flex-col min-h-0 order-2 lg:order-2" style={{ minHeight: window.innerWidth < 1024 ? '400px' : 'auto' }}>
                   <Card className="border-gray-200 flex-1 flex flex-col min-h-0">
                     <CardContent className="p-0 flex-1 flex flex-col min-h-0">
                       {/* Assistant Header */}
-                      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
-                        <span className="text-sm font-medium text-gray-700">Assistant</span>
+                      <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200 bg-gray-50">
+                        <span className="text-xs sm:text-sm font-medium text-gray-700">Assistant</span>
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={clearWorkspaceConversation}
-                          className="h-6 px-2 text-xs"
+                          className="h-5 sm:h-6 px-1.5 sm:px-2 text-xs"
                         >
-                          <Trash2 className="w-3 h-3 mr-1" />
-                          Clear
+                          <Trash2 className="w-3 h-3 sm:mr-1" />
+                          <span className="hidden sm:inline">Clear</span>
                         </Button>
                       </div>
 
                       {/* Messages */}
-                      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                      <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-3 sm:space-y-4">
                         {workspaceMessages.map((message) => (
-                          <div key={message.id} className="space-y-3">
+                          <div key={message.id} className="space-y-2 sm:space-y-3">
                             {/* Message */}
                             <div className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}>
-                              <div className={`flex items-start space-x-2 max-w-[90%]`}>
+                              <div className={`flex items-start space-x-1 sm:space-x-2 max-w-[95%] sm:max-w-[90%]`}>
                                 {message.type === "assistant" && (
                                   <div className="flex-shrink-0 mt-1">
-                                    <div className="w-6 h-6 bg-gray-900 rounded-full flex items-center justify-center">
+                                    <div className="w-5 h-5 sm:w-6 sm:h-6 bg-gray-900 rounded-full flex items-center justify-center">
                                       <span className="text-white font-semibold text-xs">B</span>
                                     </div>
                                   </div>
@@ -2103,270 +2110,27 @@ Your account (**${accountId}**) is connected and ready for development.`,
 
                                 <div className={`flex-1 ${message.type === "user" ? "flex justify-end" : ""}`}>
                                   <div
-                                    className={`rounded-lg px-3 py-2 ${
+                                    className={`rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm ${
                                       message.type === "user"
                                         ? "bg-blue-600 text-white max-w-fit"
                                         : "bg-gray-50 text-gray-900 w-full"
                                     }`}
                                   >
                                     <MessageContent content={message.content} messageId={message.id} />
-                                    {message.type === "assistant" && message.status && (
-                                      <div className={`text-xs flex items-center mt-1 ${
-                                        message.status === "success" ? "text-green-600" : 
-                                        message.status === "error" ? "text-red-600" : "text-yellow-600"
-                                      }`}>
-                                        {message.status === "success" && <Check className="w-2 h-2 mr-1" />}
-                                        {message.status === "error" && <X className="w-2 h-2 mr-1" />}
-                                        {message.status === "pending" && <Clock className="w-2 h-2 mr-1" />}
-                                        {message.status}
-                                      </div>
-                                    )}
                                   </div>
                                 </div>
 
                                 {message.type === "user" && (
                                   <div className="flex-shrink-0 mt-1">
-                                    <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
-                                      <User className="w-3 h-3 text-white" />
+                                    <div className="w-5 h-5 sm:w-6 sm:h-6 bg-blue-600 rounded-full flex items-center justify-center">
+                                      <User className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white" />
                                     </div>
                                   </div>
                                 )}
                               </div>
                             </div>
-
-                            {/* Code Proposal */}
-                            {message.codeBlocks && message.isCodeProposal && (
-                              <div className="flex justify-start">
-                                <div className="flex items-start space-x-2 max-w-[95%] w-full">
-                                  <div className="flex-shrink-0 mt-1">
-                                    <div className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center">
-                                      <Code className="w-3 h-3 text-gray-600" />
-                                    </div>
-                                  </div>
-                                  <div className="w-full">
-                                    <Card className="border-gray-200">
-                                      <CardContent className="p-0">
-                                        <div className="px-3 py-2 border-b border-gray-200 bg-gray-50">
-                                          <span className="text-xs font-medium text-gray-700">
-                                            {message.codeBlocks[0].title}
-                                          </span>
-                                        </div>
-                                        <div className="relative">
-                                          <pre className="p-3 text-xs overflow-x-auto bg-gray-900 text-gray-100 max-h-40 overflow-y-auto">
-                                            <code className="font-mono">{message.codeBlocks[0].code}</code>
-                                          </pre>
-                                        </div>
-                                        <div className="px-3 py-2 border-t border-gray-200 bg-gray-50">
-                                          {message.isAccepted ? (
-                                            <div className="flex items-center text-xs text-green-600">
-                                              <Check className="w-3 h-3 mr-1" />
-                                              Code accepted
-                                            </div>
-                                          ) : (
-                                            <Button
-                                              size="sm"
-                                              onClick={() =>
-                                                acceptCodeProposal(
-                                                  message.id,
-                                                  message.codeBlocks![0].code,
-                                                )
-                                              }
-                                              className="bg-gray-900 hover:bg-gray-800 text-white h-6 px-2 text-xs"
-                                            >
-                                              <Check className="w-3 h-3 mr-1" />
-                                              Accept
-                                            </Button>
-                                          )}
-                                        </div>
-                                      </CardContent>
-                                    </Card>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Enhanced Code Changes Display with Diff Visualization */}
-                            {message.hasCodeChanges && message.codeChanges && (
-                              <div className="flex justify-start">
-                                <div className="flex items-start space-x-2 max-w-[95%] w-full">
-                                  <div className="flex-shrink-0 mt-1">
-                                    <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
-                                      <Bot className="w-3 h-3 text-blue-600" />
-                                    </div>
-                                  </div>
-                                  <div className="w-full">
-                                    <Card className={`border-blue-200 transition-all duration-500 ${
-                                      message.isApplyingChanges ? 'bg-gradient-to-b from-blue-50 to-white' : ''
-                                    }`}>
-                                      <CardContent className="p-0">
-                                        <div className="px-3 py-2 border-b border-blue-200 bg-blue-50">
-                                          <div className="flex items-center justify-between">
-                                            <span className="text-xs font-medium text-blue-900">
-                                              Code Changes {message.isApplyingChanges && '(Applying...)'}
-                                            </span>
-                                            {message.isApplyingChanges && (
-                                              <div className="flex items-center space-x-1">
-                                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-100"></div>
-                                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse delay-200"></div>
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-                                        
-                                        {/* Gradient Animation Overlay */}
-                                        {message.isApplyingChanges && (
-                                          <div className="absolute inset-0 bg-gradient-to-b from-blue-100/50 via-transparent to-transparent animate-pulse z-10 pointer-events-none"></div>
-                                        )}
-
-                                        <div className="space-y-3 p-3">
-                                          {message.codeChanges.map((change, index) => (
-                                            <div 
-                                              key={index} 
-                                              className={`border border-gray-200 rounded-lg overflow-hidden transition-all duration-300 ${
-                                                message.isApplyingChanges ? 'bg-blue-50 animate-pulse' : 'bg-white'
-                                              }`}
-                                            >
-                                              {/* Change Header */}
-                                              <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
-                                                <div className="flex items-center justify-between">
-                                                  <div className="flex items-center space-x-2">
-                                                    <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                                      change.type === 'delete' ? 'bg-red-100 text-red-800' :
-                                                      change.type === 'replace' ? 'bg-yellow-100 text-yellow-800' :
-                                                      'bg-green-100 text-green-800'
-                                                    }`}>
-                                                      {change.type.charAt(0).toUpperCase() + change.type.slice(1)}
-                                                    </span>
-                                                    <span className="text-xs text-gray-600">{change.description}</span>
-                                                  </div>
-                                                  <span className="text-xs text-gray-500">
-                                                    {change.lineRange ? `Lines ${change.lineRange.start}-${change.lineRange.end}` : 
-                                                     change.position ? `Line ${change.position}` : ''}
-                                                  </span>
-                                                </div>
-                                              </div>
-
-                                              {/* Diff Display */}
-                                              <div className="text-xs font-mono">
-                                                {/* Context Before */}
-                                                {change.preview?.before && (
-                                                  <div className="px-3 py-1 bg-gray-50 text-gray-600 border-b border-gray-100">
-                                                    <div className="flex">
-                                                      <span className="w-8 text-gray-400 select-none">...</span>
-                                                      <span>{change.preview.before}</span>
-                                                    </div>
-                                                  </div>
-                                                )}
-
-                                                {/* Deletion (Red) */}
-                                                {(change.type === 'replace' || change.type === 'delete') && change.oldCode && (
-                                                  <div className="bg-red-50 border-l-4 border-red-400">
-                                                    {change.oldCode.split('\n').map((line, i) => (
-                                                      <div key={`del-${i}`} className="flex hover:bg-red-100">
-                                                        <span className="w-8 bg-red-200 text-red-600 text-center select-none">-</span>
-                                                        <span className="px-3 py-1 text-red-800 flex-1">{line}</span>
-                                                      </div>
-                                                    ))}
-                                                  </div>
-                                                )}
-
-                                                {/* Addition (Green) */}
-                                                {(change.type !== 'delete') && change.code && (
-                                                  <div className="bg-green-50 border-l-4 border-green-400">
-                                                    {change.code.split('\n').map((line, i) => (
-                                                      <div key={`add-${i}`} className="flex hover:bg-green-100">
-                                                        <span className="w-8 bg-green-200 text-green-600 text-center select-none">+</span>
-                                                        <span className="px-3 py-1 text-green-800 flex-1">{line}</span>
-                                                      </div>
-                                                    ))}
-                                                  </div>
-                                                )}
-
-                                                {/* Context After */}
-                                                {change.preview?.after && (
-                                                  <div className="px-3 py-1 bg-gray-50 text-gray-600 border-t border-gray-100">
-                                                    <div className="flex">
-                                                      <span className="w-8 text-gray-400 select-none">...</span>
-                                                      <span>{change.preview.after}</span>
-                                                    </div>
-                                                  </div>
-                                                )}
-                                              </div>
-                                            </div>
-                                          ))}
-                                        </div>
-
-                                        {/* Accept/Reject Buttons */}
-                                        {!message.isApplyingChanges && (
-                                          <div className="px-3 py-2 border-t border-blue-200 bg-blue-50">
-                                            {message.isAccepted === true ? (
-                                              <div className="flex items-center text-xs text-green-600">
-                                                <Check className="w-3 h-3 mr-1" />
-                                                Changes accepted and applied
-                                              </div>
-                                            ) : message.isAccepted === false ? (
-                                              <div className="flex items-center text-xs text-red-600">
-                                                <X className="w-3 h-3 mr-1" />
-                                                Changes rejected and reverted
-                                              </div>
-                                            ) : (
-                                              <div className="flex items-center justify-between">
-                                                <div className="text-xs text-gray-600">
-                                                  {message.codeChanges?.length} change(s) ready to apply
-                                                </div>
-                                                <div className="flex space-x-2">
-                                                  <Button
-                                                    size="sm"
-                                                    onClick={() => acceptCodeChanges(message.id)}
-                                                    className="bg-green-600 hover:bg-green-700 text-white h-6 px-2 text-xs"
-                                                  >
-                                                    <Check className="w-3 h-3 mr-1" />
-                                                    Accept All
-                                                  </Button>
-                                                  <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    onClick={() => rejectCodeChanges(message.id)}
-                                                    className="border-red-300 text-red-600 hover:bg-red-50 h-6 px-2 text-xs"
-                                                  >
-                                                    <X className="w-3 h-3 mr-1" />
-                                                    Reject All
-                                                  </Button>
-                                                </div>
-                                              </div>
-                                            )}
-                                          </div>
-                                        )}
-                                      </CardContent>
-                                    </Card>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
                           </div>
                         ))}
-
-                        {workspaceLoading && (
-                          <div className="flex justify-start">
-                            <div className="flex items-start space-x-2 max-w-[90%]">
-                              <div className="flex-shrink-0 mt-1">
-                                <div className="w-6 h-6 bg-gray-900 rounded-full flex items-center justify-center">
-                                  <span className="text-white font-semibold text-xs">B</span>
-                                </div>
-                              </div>
-                              <div className="bg-gray-50 rounded-lg px-3 py-2">
-                                <div className="flex items-center space-x-1">
-                                  <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce"></div>
-                                  <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce delay-100"></div>
-                                  <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce delay-200"></div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        <div ref={workspaceMessagesEndRef} />
                       </div>
 
                       {/* Input */}
@@ -2517,104 +2281,80 @@ Your account (**${accountId}**) is connected and ready for development.`,
       </div>
 
       {/* Connect Hedera Account Modal */}
-      {showWalletModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-lg border-gray-200 shadow-xl">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900">Connect Hedera Account</h2>
-                  <p className="text-sm text-gray-600 mt-1">Securely provide your account credentials to start building</p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setShowWalletModal(false)
-                    setCredentialErrors({})
-                  }}
-                  className="text-gray-400 hover:text-gray-600 h-8 w-8 p-0"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-
-              {/* Security Notice */}
-              <Alert className="mb-6 border-purple-200 bg-purple-50">
-                <Shield className="h-4 w-4 text-purple-600" />
-                <AlertDescription className="text-purple-800 text-sm">
-                  <strong>Security Notice:</strong> Your credentials are stored in your browser's session storage (temporary) and are never transmitted to external servers.
-                  <br />
-                </AlertDescription>
-              </Alert>
-
-              <div className="space-y-5">
-                <div>
-                  <Label htmlFor="accountId" className="text-sm font-medium text-gray-900 mb-2 block">
-                    Account ID
-                  </Label>
-                  <Input
-                    id="accountId"
-                    placeholder="0.0.6255888"
-                    value={accountId}
-                    onChange={(e) => {
-                      setAccountId(e.target.value)
-                      if (credentialErrors.accountId) {
-                        setCredentialErrors(prev => ({ ...prev, accountId: undefined }))
-                      }
-                    }}
-                    className={`${credentialErrors.accountId ? "border-red-500 focus:border-red-500 focus:ring-red-500" : "border-gray-300 focus:border-gray-400 focus:ring-gray-400"}`}
-                  />
-                  {credentialErrors.accountId && (
-                    <p className="text-sm text-red-600 mt-1">{credentialErrors.accountId}</p>
-                  )}
-                </div>
-
-                <div>
-                  <Label htmlFor="privateKey" className="text-sm font-medium text-gray-900 mb-2 block">
-                    Private Key (DER Encoded)
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="privateKey"
-                      type={showPrivateKey ? "text" : "password"}
-                      placeholder="Enter your private key (DER encoded)"
-                      value={privateKey}
-                      onChange={(e) => {
-                        setPrivateKey(e.target.value)
-                        if (credentialErrors.privateKey) {
-                          setCredentialErrors(prev => ({ ...prev, privateKey: undefined }))
-                        }
-                      }}
-                      className={`pr-10 ${credentialErrors.privateKey ? "border-red-500 focus:border-red-500 focus:ring-red-500" : "border-gray-300 focus:border-gray-400 focus:ring-gray-400"}`}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
-                      onClick={() => setShowPrivateKey(!showPrivateKey)}
+      <Dialog open={showWalletModal} onOpenChange={setShowWalletModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base sm:text-lg">Connect Hedera Account</DialogTitle>
+            <DialogDescription className="text-sm">
+              Enter your Hedera testnet credentials to start building.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 sm:space-y-4">
+            <div>
+              <Label htmlFor="accountId" className="text-sm">Account ID</Label>
+              <Input
+                id="accountId"
+                placeholder="0.0.123456"
+                value={tempAccountId}
+                onChange={(e) => setTempAccountId(e.target.value)}
+                className={`mt-1 text-sm ${accountIdError ? "border-red-300" : ""}`}
+              />
+              {accountIdError && (
+                <p className="text-xs text-red-600 mt-1">{accountIdError}</p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="privateKey" className="text-sm">Private Key (ECDSA)</Label>
+              <Input
+                id="privateKey"
+                type="password"
+                placeholder="302e020100300506032b657004220420..."
+                value={tempPrivateKey}
+                onChange={(e) => setTempPrivateKey(e.target.value)}
+                className={`mt-1 text-sm ${privateKeyError ? "border-red-300" : ""}`}
+              />
+              {privateKeyError && (
+                <p className="text-xs text-red-600 mt-1">{privateKeyError}</p>
+              )}
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex">
+                <Info className="w-4 h-4 text-blue-600 mt-0.5 mr-2 flex-shrink-0" />
+                <div className="text-xs text-blue-800">
+                  <p className="font-medium mb-1">Need testnet credentials?</p>
+                  <p>
+                    Visit{" "}
+                    <a
+                      href="https://portal.hedera.com/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:no-underline"
                     >
-                      {showPrivateKey ? (
-                        <EyeOff className="h-3 w-3 text-gray-500" />
-                      ) : (
-                        <Eye className="h-3 w-3 text-gray-500" />
-                      )}
-                    </Button>
-                  </div>
-                  {credentialErrors.privateKey && (
-                    <p className="text-sm text-red-600 mt-1">{credentialErrors.privateKey}</p>
-                  )}
+                      Hedera Portal
+                    </a>{" "}
+                    to create a testnet account and get free HBAR.
+                  </p>
                 </div>
-
-                <Button onClick={handleConnect} className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 mt-6">
-                  Connect Account
-                </Button>
               </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+            </div>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setShowWalletModal(false)} className="text-sm">
+              Cancel
+            </Button>
+            <Button onClick={handleConnect} disabled={isConnecting} className="bg-gray-900 hover:bg-gray-800 text-white text-sm">
+              {isConnecting ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  Connecting...
+                </>
+              ) : (
+                "Connect"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
