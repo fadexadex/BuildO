@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback, memo, startTransition } from "react"
+import { useState, useEffect, useRef, useCallback, memo, startTransition, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -102,9 +102,19 @@ const account = checkBalance('0.0.123');`)
   const [simpleChatSessionId, setSimpleChatSessionId] = useState<string>("")
   const [pendingCodeChanges, setPendingCodeChanges] = useState<{messageId: string, changes: CodeChange[], originalCode: string} | null>(null)
   
+  // Monaco editor instance ref for error detection
+  const monacoEditorRef = useRef<any>(null)
+  const monacoRef = useRef<any>(null)
+  
   // Input throttling states
   const [inputLocked, setInputLocked] = useState(false)
   const [workspaceInputLocked, setWorkspaceInputLocked] = useState(false)
+  
+  // Debounced input states to prevent rapid updates
+  const [debouncedInputValue, setDebouncedInputValue] = useState("")
+  const [debouncedWorkspaceInput, setDebouncedWorkspaceInput] = useState("")
+  const inputDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const workspaceDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Session management states
   const [agentSessionId, setAgentSessionId] = useState<string>("")
@@ -168,7 +178,88 @@ main();`;
   };
 
   // Format agent responses to clean up function calls and improve presentation
-  const formatAgentResponse = (response: string) => {
+  // Function to detect syntax errors in Monaco editor
+  const detectSyntaxErrors = useCallback(() => {
+    if (!monacoRef.current || !monacoEditorRef.current) {
+      return []
+    }
+    
+    try {
+      const model = monacoEditorRef.current.getModel()
+      if (!model) return []
+      
+      const markers = monacoRef.current.editor.getModelMarkers({ resource: model.uri })
+      const errors = markers.filter((marker: any) => marker.severity === monacoRef.current.MarkerSeverity.Error)
+      
+      return errors.map((error: any) => ({
+        line: error.startLineNumber,
+        column: error.startColumn,
+        message: error.message,
+        code: error.code,
+        severity: 'error'
+      }))
+    } catch (error) {
+      console.error('Error detecting syntax errors:', error)
+      return []
+    }
+  }, [])
+
+  // Function to trigger AI correction for syntax errors
+  const triggerErrorCorrection = useCallback(async (errors: any[], codeWithErrors: string) => {
+    if (errors.length === 0) return
+    
+    const errorDescriptions = errors.map(error => 
+      `Line ${error.line}: ${error.message}`
+    ).join('\n')
+    
+    const correctionPrompt = `The code you just applied has syntax errors. Please fix these issues:
+
+ERRORS DETECTED:
+${errorDescriptions}
+
+CURRENT CODE WITH ERRORS:
+\`\`\`javascript
+${codeWithErrors}
+\`\`\`
+
+Please provide corrected code using the CODE_CHANGES format to fix these syntax errors.`
+
+    try {
+      // Send correction request to AI
+      const correctionMessage: Message = {
+        id: `correction-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        type: "user",
+        content: correctionPrompt,
+        timestamp: new Date(),
+        status: "pending"
+      }
+
+      // Add the correction request to workspace messages
+      setWorkspaceMessages((prev) => [...prev, correctionMessage])
+
+      // Execute the correction request
+      const responseMessage = await executeSimpleChatRequest(correctionPrompt)
+      
+      setWorkspaceMessages((prev) => [...prev, responseMessage])
+
+      toast({
+        title: "🔧 Auto-Correction Triggered",
+        description: `Detected ${errors.length} syntax error(s) and requested AI to fix them.`,
+        duration: 3000,
+      })
+
+    } catch (error) {
+      console.error('Error triggering correction:', error)
+      toast({
+        title: "❌ Auto-Correction Failed",
+        description: "Could not automatically request error correction.",
+        variant: "destructive",
+        duration: 3000,
+      })
+    }
+  }, [])
+
+  const formatAgentResponse = useCallback((response: string) => {
     let cleaned = response;
     
     // Remove function call blocks (including the thinking blocks)
@@ -191,7 +282,7 @@ main();`;
     cleaned = cleaned.replace(/(account\s+)(0\.0\.\d+)/gi, '$1**$2**');
     
     return cleaned;
-  };
+  }, []);
 
   // Enhanced code block component
   const CodeBlock = memo(({ code, language = 'javascript', messageId, showAddToWorkspace = true }: { code: string, language?: string, messageId: string, showAddToWorkspace?: boolean }) => {
@@ -211,16 +302,16 @@ main();`;
               Copy
             </button>
             {showAddToWorkspace && (
-              <button 
-                onClick={() => addCodeToWorkspace(codeId)} 
-                className="inline-flex items-center px-3 py-1.5 text-xs bg-black hover:bg-gray-800 text-white rounded-md transition-all duration-200 shadow-sm hover:shadow"
-                title="Add to workspace"
-              >
-                Add to Workspace
-                <svg className="w-3 h-3 ml-1.5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M7 17L17 7M17 7H10M17 7V14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </button>
+            <button 
+              onClick={() => addCodeToWorkspace(codeId)} 
+              className="inline-flex items-center px-3 py-1.5 text-xs bg-black hover:bg-gray-800 text-white rounded-md transition-all duration-200 shadow-sm hover:shadow"
+              title="Add to workspace"
+            >
+              Add to Workspace
+              <svg className="w-3 h-3 ml-1.5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M7 17L17 7M17 7H10M17 7V14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
             )}
           </div>
         </div>
@@ -233,10 +324,8 @@ main();`;
 
   // Message content component that properly renders code blocks
   const MessageContent = memo(({ content, messageId }: { content: string, messageId: string }) => {
-    const [parsedContent, setParsedContent] = useState<string>("");
-    const [codeBlocks, setCodeBlocks] = useState<Array<{ id: string, code: string, language: string }>>([]);
-
-    useEffect(() => {
+    // Memoize the parsing to prevent recalculation on every render
+    const { parsedContent, codeBlocks } = useMemo(() => {
       // Parse the content and extract code blocks
       const blocks: Array<{ id: string, code: string, language: string }> = [];
       
@@ -254,9 +343,8 @@ main();`;
       processedContent = processedContent.replace(/(<li.*<\/li>)/g, '<ul class="list-disc list-inside space-y-0.5 my-1">$1</ul>');
       processedContent = processedContent.replace(/\n/g, '<br/>');
 
-      setParsedContent(processedContent);
-      setCodeBlocks(blocks);
-    }, [content]);
+      return { parsedContent: processedContent, codeBlocks: blocks };
+    }, [content]); // Only recalculate when content changes
 
     return (
       <div className="text-xs leading-relaxed">
@@ -679,29 +767,36 @@ Your account (**${accountId}**) is connected and ready for development.`,
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !isConnected || inputLocked) return
     
+    // Batch state updates to prevent flickering
+    const currentInput = inputValue.trim()
+    
+    // Single state update batch
+    startTransition(() => {
     setInputLocked(true)
+      setInputValue("") // Clear input immediately for better UX
+      setIsLoading(true)
 
+      // Add user message
     const userMessage: Message = {
       id: Date.now().toString(),
       type: "user",
-      content: inputValue,
+        content: currentInput,
       timestamp: new Date(),
     }
-
-    startTransition(() => {
       setMessages((prev) => [...prev, userMessage])
     })
-    const currentInput = inputValue
-    setInputValue("")
-    setIsLoading(true)
 
     try {
       // Execute the real agent
       const agentResponse = await executeAgentRequest(currentInput, false)
+      
+      // Single state update for response
       startTransition(() => {
         setMessages((prev) => [...prev, agentResponse])
+        setIsLoading(false)
       })
       
+      // Show appropriate toast
       if (agentResponse.status === "success") {
         toast({
           title: "Operation Completed",
@@ -716,6 +811,9 @@ Your account (**${accountId}**) is connected and ready for development.`,
       }
     } catch (error) {
       console.error('Message handling error:', error)
+      
+      // Single state update for error
+      startTransition(() => {
       const errorMessage: Message = {
         id: Date.now().toString(),
         type: "assistant",
@@ -724,40 +822,54 @@ Your account (**${accountId}**) is connected and ready for development.`,
         status: "error",
       }
       setMessages((prev) => [...prev, errorMessage])
-    } finally {
       setIsLoading(false)
-      // Unlock input after a delay to prevent rapid firing
-      setTimeout(() => setInputLocked(false), 500)
+      })
+    } finally {
+      // Unlock input with shorter delay to improve responsiveness
+      setTimeout(() => {
+        startTransition(() => {
+          setInputLocked(false)
+        })
+      }, 200) // Reduced from 500ms to 200ms
     }
   }
 
   const handleWorkspaceSendMessage = async () => {
     if (!workspaceInput.trim() || !isConnected || workspaceInputLocked) return
     
+    // Batch state updates to prevent flickering
+    const currentInput = workspaceInput.trim()
+    
+    // Single state update batch
+    startTransition(() => {
     setWorkspaceInputLocked(true)
+      setWorkspaceInput("") // Clear input immediately for better UX
+      setWorkspaceLoading(true)
 
+      // Add user message
     const userMessage: Message = {
       id: Date.now().toString(),
       type: "user",
-      content: workspaceInput,
+        content: currentInput,
       timestamp: new Date(),
     }
-
-    startTransition(() => {
       setWorkspaceMessages((prev) => [...prev, userMessage])
     })
-    const currentInput = workspaceInput
-    setWorkspaceInput("")
-    setWorkspaceLoading(true)
 
     try {
-      // Use simple chat for workspace functionality now
+      // Use simple chat for workspace functionality
       const response = await executeSimpleChatRequest(currentInput)
+      
+      // Single state update for response
       startTransition(() => {
         setWorkspaceMessages((prev) => [...prev, response])
+        setWorkspaceLoading(false)
       })
     } catch (error) {
       console.error('Workspace message error:', error)
+      
+      // Single state update for error
+      startTransition(() => {
       const errorMessage: Message = {
         id: Date.now().toString(),
         type: "assistant",
@@ -766,10 +878,15 @@ Your account (**${accountId}**) is connected and ready for development.`,
         status: "error",
       }
       setWorkspaceMessages((prev) => [...prev, errorMessage])
-    } finally {
       setWorkspaceLoading(false)
-      // Unlock input after a delay to prevent rapid firing
-      setTimeout(() => setWorkspaceInputLocked(false), 500)
+      })
+    } finally {
+      // Unlock input with shorter delay to improve responsiveness
+      setTimeout(() => {
+        startTransition(() => {
+          setWorkspaceInputLocked(false)
+        })
+      }, 200) // Reduced from 500ms to 200ms
     }
   }
 
@@ -817,6 +934,11 @@ Your account (**${accountId}**) is connected and ready for development.`,
 
       // Auto-apply code changes if in agent mode
       if (assistantMode === 'agent' && data.hasCodeChanges && data.codeChanges) {
+        toast({
+          title: "🤖 Auto-Applying Code",
+          description: `Applying ${data.codeChanges.length} code change(s) to your workspace...`,
+          duration: 2000,
+        })
         setTimeout(() => {
           applyCodeChangesWithAnimation(responseMessage.id, data.codeChanges!, playgroundCode)
         }, 500) // Small delay for better UX
@@ -870,11 +992,29 @@ Your account (**${accountId}**) is connected and ready for development.`,
         msg.id === messageId ? { ...msg, isApplyingChanges: false } : msg
       ))
 
-      toast({
-        title: "🎉 Code Applied Successfully",
-        description: `${changes.length} change(s) applied. You can accept or reject them.`,
-        duration: 3000,
-      })
+      // Check for syntax errors after a brief delay to let Monaco process the changes
+      setTimeout(async () => {
+        const syntaxErrors = detectSyntaxErrors()
+        
+        if (syntaxErrors.length > 0) {
+          console.log('Detected syntax errors after code application:', syntaxErrors)
+          
+          toast({
+            title: "⚠️ Syntax Errors Detected",
+            description: `Found ${syntaxErrors.length} error(s). Triggering auto-correction...`,
+            duration: 3000,
+          })
+          
+          // Trigger automatic correction
+          await triggerErrorCorrection(syntaxErrors, newCode)
+        } else {
+          toast({
+            title: "🎉 Code Applied Successfully",
+            description: `${changes.length} change(s) applied. You can accept or reject them.`,
+            duration: 3000,
+          })
+        }
+      }, 1000) // 1 second delay to let Monaco editor process and validate the code
 
     } catch (error) {
       console.error('Error applying code changes:', error)
@@ -1102,7 +1242,7 @@ Your account (**${accountId}**) is connected and ready for development.`,
   }
 
   // Smart code merging logic - removes duplicates and intelligently merges
-  const mergeCodeIntelligently = (existingCode: string, newCode: string): string => {
+  const mergeCodeIntelligently = useCallback((existingCode: string, newCode: string): string => {
     const existingLines = existingCode.split('\n');
     const newLines = newCode.split('\n');
     
@@ -1184,51 +1324,122 @@ Your account (**${accountId}**) is connected and ready for development.`,
              !(trimmed.startsWith('const {') && trimmed.includes('} = require('));
     });
     
-    // Find the main function in existing code and insert new code inside it
+    // Smart merging strategy: add functions before main(), add code inside main()
     const existingCodeText = existingCodeWithoutImports.join('\n');
-    const mainFunctionMatch = existingCodeText.match(/(async\s+function\s+main\s*\(\s*\)\s*{[\s\S]*?)(\n\s*}\s*(?:\n|$))/);
     
-    if (mainFunctionMatch && newCodeWithoutImports.length > 0) {
-      // Insert new code before the closing brace of main function
-      const beforeClosing = mainFunctionMatch[1];
-      const afterMain = existingCodeText.substring(mainFunctionMatch.index! + mainFunctionMatch[0].length);
-      
-      // Add proper indentation to new code
-      const indentedNewCode = newCodeWithoutImports
-        .map(line => line.trim() ? `    ${line}` : line)
-        .join('\n');
-      
-      const newMainFunction = `${beforeClosing}
+    // Separate functions from the new code
+    const newFunctions: string[] = [];
+    const newMainCode: string[] = [];
+    let currentFunction: string[] = [];
+    let inFunction = false;
     
-    // Added code:
-${indentedNewCode}
-  }`;
+    for (const line of newCodeWithoutImports) {
+      const trimmed = line.trim();
       
-      return [
-        ...mergedImports,
-        '',
-        newMainFunction,
-        afterMain.trim()
-      ].filter(Boolean).join('\n');
-    } else {
-      // No main function found or no new code, just append
+      // Check if this is a function declaration
+      if (trimmed.match(/^(async\s+)?function\s+\w+\s*\(/)) {
+        if (currentFunction.length > 0) {
+          newFunctions.push(currentFunction.join('\n'));
+        }
+        currentFunction = [line];
+        inFunction = true;
+      } else if (inFunction && trimmed === '}' && !line.startsWith('  ')) {
+        // End of function (closing brace at root level)
+        currentFunction.push(line);
+        newFunctions.push(currentFunction.join('\n'));
+        currentFunction = [];
+        inFunction = false;
+      } else if (inFunction) {
+        currentFunction.push(line);
+      } else if (trimmed && !trimmed.startsWith('//')) {
+        // Regular code that should go in main()
+        newMainCode.push(line);
+      }
+    }
+    
+    // Add any remaining function
+    if (currentFunction.length > 0) {
+      newFunctions.push(currentFunction.join('\n'));
+    }
+    
+    // Find the main function and its structure
+    const mainFunctionRegex = /(async\s+function\s+main\s*\(\s*\)\s*{\s*\n)([\s\S]*?)(\n\s*}\s*\n\s*main\s*\(\s*\)\s*;?\s*$)/;
+    const mainMatch = existingCodeText.match(mainFunctionRegex);
+    
+    if (mainMatch && (newFunctions.length > 0 || newMainCode.length > 0)) {
+      const mainStart = mainMatch[1];
+      const mainBody = mainMatch[2];
+      const mainEnd = mainMatch[3];
+      
+      // Find where to insert new code in main function
+      // Look for the "Start your code here" comment or similar insertion points
+      const insertionPoints = [
+        /(\s*\/\/\s*Start your code here[\s\S]*?)(\n\s*\/\/\s*Example:)/,
+        /(\s*console\.log\("✅ Connected to Hedera Testnet"\);\s*\n\s*console\.log\("🏦 Account ID:"[\s\S]*?\n)([\s\S]*)/
+      ];
+      
+      let modifiedMainBody = mainBody;
+      let insertionMade = false;
+      
+      for (const pattern of insertionPoints) {
+        const insertMatch = mainBody.match(pattern);
+        if (insertMatch) {
+          const beforeInsertion = insertMatch[1];
+          const afterInsertion = insertMatch[2] || '';
+          
+          // Add proper indentation to new main code
+          const indentedNewCode = newMainCode
+            .map(line => line.trim() ? `    ${line}` : '')
+            .filter(line => line.trim())
+            .join('\n');
+          
+          if (indentedNewCode) {
+            modifiedMainBody = beforeInsertion + '\n    \n    // Added functionality:\n' + indentedNewCode + '\n    ' + afterInsertion;
+            insertionMade = true;
+            break;
+          }
+        }
+      }
+      
+      // If no insertion point found, add at the end of main function before closing
+      if (!insertionMade && newMainCode.length > 0) {
+        const indentedNewCode = newMainCode
+          .map(line => line.trim() ? `    ${line}` : '')
+          .filter(line => line.trim())
+          .join('\n');
+        
+        modifiedMainBody = mainBody + '\n    \n    // Added functionality:\n' + indentedNewCode + '\n  ';
+      }
+      
+      // Construct the final code
       const result = [
         ...mergedImports,
         '',
+        ...newFunctions,
+        newFunctions.length > 0 ? '' : null,
+        mainStart + modifiedMainBody + mainEnd
+      ].filter(line => line !== null).join('\n');
+      
+      return result;
+    } else {
+      // No main function found or no new code, just append everything
+      const result = [
+        ...mergedImports,
+        '',
+        ...newFunctions,
+        newFunctions.length > 0 ? '' : null,
         ...existingCodeWithoutImports,
-        ''
-      ];
+        newMainCode.length > 0 ? '' : null,
+        newMainCode.length > 0 ? '// Added code:' : null,
+        ...newMainCode
+      ].filter(line => line !== null);
       
-      if (newCodeWithoutImports.length > 0) {
-        result.push('// Added code:', ...newCodeWithoutImports);
-      }
-      
-      return result.filter(Boolean).join('\n');
+      return result.join('\n');
     }
-  }
+  }, [])
 
   // Copy code block to clipboard
-  const copyCodeBlock = async (codeId: string) => {
+  const copyCodeBlock = useCallback(async (codeId: string) => {
     try {
       const codeElement = document.getElementById(codeId);
       if (codeElement) {
@@ -1248,10 +1459,10 @@ ${indentedNewCode}
         variant: "destructive"
       });
     }
-  }
+  }, [toast])
 
   // Add code to workspace with intelligent merging and redirect
-  const addCodeToWorkspace = (codeId: string) => {
+  const addCodeToWorkspace = useCallback((codeId: string) => {
     try {
       const codeElement = document.getElementById(codeId);
       if (codeElement) {
@@ -1276,7 +1487,7 @@ ${indentedNewCode}
         variant: "destructive"
       });
     }
-  }
+  }, [playgroundCode, toast, setMode, setPlaygroundCode])
 
 
 
@@ -1295,6 +1506,47 @@ ${indentedNewCode}
   useEffect(() => {
     currentCodeRef.current = playgroundCode
   }, [playgroundCode])
+
+  // Debounced input handlers to prevent excessive state updates
+  const handleInputChange = useCallback((value: string) => {
+    setInputValue(value)
+    
+    // Clear existing debounce
+    if (inputDebounceRef.current) {
+      clearTimeout(inputDebounceRef.current)
+    }
+    
+    // Set new debounce
+    inputDebounceRef.current = setTimeout(() => {
+      setDebouncedInputValue(value)
+    }, 150) // 150ms debounce
+  }, [])
+
+  const handleWorkspaceInputChange = useCallback((value: string) => {
+    setWorkspaceInput(value)
+    
+    // Clear existing debounce
+    if (workspaceDebounceRef.current) {
+      clearTimeout(workspaceDebounceRef.current)
+    }
+    
+    // Set new debounce
+    workspaceDebounceRef.current = setTimeout(() => {
+      setDebouncedWorkspaceInput(value)
+    }, 150) // 150ms debounce
+  }, [])
+
+  // Cleanup debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      if (inputDebounceRef.current) {
+        clearTimeout(inputDebounceRef.current)
+      }
+      if (workspaceDebounceRef.current) {
+        clearTimeout(workspaceDebounceRef.current)
+      }
+    }
+  }, [])
 
   // Mouse event handlers for editor resizing
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -1622,7 +1874,7 @@ ${indentedNewCode}
                       isConnected ? "Ask me to help you build on Hedera..." : "Connect your wallet to start building..."
                     }
                     value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
+                    onChange={(e) => handleInputChange(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey && !e.repeat) {
                         e.preventDefault()
@@ -1722,7 +1974,11 @@ ${indentedNewCode}
                           defaultLanguage="javascript"
                           value={playgroundCode}
                           onChange={(value) => setPlaygroundCode(value || "")}
-                          onMount={(editor) => {
+                          onMount={(editor, monaco) => {
+                            // Store editor and monaco instances for error detection
+                            monacoEditorRef.current = editor;
+                            monacoRef.current = monaco;
+                            
                             // Set cursor to line 2, column 1 where the actual code starts
                             editor.setPosition({ lineNumber: 2, column: 1 });
                             editor.focus();
@@ -2114,14 +2370,14 @@ ${indentedNewCode}
                               onClick={() => setShowContextOptions(!showContextOptions)}
                               className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-md transition-colors w-full justify-between"
                             >
-                              <div className="flex items-center space-x-2">
+                          <div className="flex items-center space-x-2">
                                 <Settings className="w-4 h-4" />
                                 <span className="font-medium">Context Options</span>
                                 {(includeCodebaseContext || includeTerminalContext) && (
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                     {[includeCodebaseContext && 'Code', includeTerminalContext && 'Terminal'].filter(Boolean).join(', ')}
-                                  </span>
-                                )}
+                              </span>
+                            )}
                               </div>
                               <svg 
                                 className={`w-4 h-4 transition-transform ${showContextOptions ? 'rotate-180' : ''}`}
@@ -2140,19 +2396,19 @@ ${indentedNewCode}
                                   <div className="flex items-center space-x-2">
                                     <Code className="w-4 h-4 text-gray-500" />
                                     <span className="text-sm text-gray-700">Include Codebase Context</span>
-                                  </div>
-                                  <button
-                                    onClick={() => setIncludeCodebaseContext(!includeCodebaseContext)}
+                          </div>
+                          <button
+                            onClick={() => setIncludeCodebaseContext(!includeCodebaseContext)}
                                     className={`relative inline-flex items-center h-5 rounded-full w-9 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
                                       includeCodebaseContext ? 'bg-blue-600' : 'bg-gray-300'
-                                    }`}
-                                  >
-                                    <span
+                            }`}
+                          >
+                            <span
                                       className={`inline-block w-3 h-3 transform transition-transform bg-white rounded-full ${
                                         includeCodebaseContext ? 'translate-x-5' : 'translate-x-1'
-                                      }`}
-                                    />
-                                  </button>
+                              }`}
+                            />
+                          </button>
                                 </div>
                                 
                                 {/* Terminal Context Toggle */}
@@ -2189,7 +2445,7 @@ ${indentedNewCode}
                             )}
                           </div>
                         </div>
-                        
+
                         {/* Toggle Buttons */}
                         <div className="flex items-center space-x-1 mb-3">
                           <button
@@ -2223,7 +2479,7 @@ ${indentedNewCode}
                               assistantMode === "ask" ? "Ask me a question..." : "Tell me what code to write..."
                             }
                             value={workspaceInput}
-                            onChange={(e) => setWorkspaceInput(e.target.value)}
+                            onChange={(e) => handleWorkspaceInputChange(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === "Enter" && !e.shiftKey && !e.repeat) {
                                 e.preventDefault()

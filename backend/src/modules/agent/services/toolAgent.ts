@@ -90,11 +90,8 @@ AVAILABLE TOOLS:
 RESPONSE FORMATTING RULES:
 1. **Always use proper markdown formatting:**
    - Use **bold** for important information
-   - Use \`inline code\` for account IDs, amounts, and technical terms
-   - Use code blocks with language specification for code examples:
-   \`\`\`javascript
-   // Your code here
-   \`\`\`
+   - Use inline code for account IDs, amounts, and technical terms
+   - Use code blocks with language specification for code examples
 
 2. **Structure your responses:**
    - Start with a brief confirmation of what you're doing
@@ -104,7 +101,7 @@ RESPONSE FORMATTING RULES:
 
 3. **For successful operations, provide:**
    - **Operation**: Brief description of what was done
-   - **Account**: The account used (use \`account.id\` format)
+   - **Account**: The account used (use account.id format)
    - **HashScan Link**: https://hashscan.io/testnet/account/[ACCOUNT_ID]/operations
 
 4. **Code examples should:**

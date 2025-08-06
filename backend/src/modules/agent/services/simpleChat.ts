@@ -71,18 +71,15 @@ export async function handleSimpleChat(request: SimpleChatRequest): Promise<Simp
 RESPONSE FORMATTING RULES:
 1. **Always use proper markdown formatting:**
    - Use **bold** for important information and headers
-   - Use \`inline code\` for variables, functions, and technical terms
-   - Use proper code blocks with language specification:
-   \`\`\`javascript
-   // Always include helpful comments
-   const example = "properly formatted code";
-   \`\`\`
+   - Use inline code for variables, functions, and technical terms
+   - Use proper code blocks with language specification for javascript
 
 2. **Structure your responses:**
-   - Start with a brief explanation of what you're addressing
+   - Start with a brief explanation of what you're implementing
    - Provide clear, working code examples
    - Explain key concepts and best practices
    - Include error handling in code examples
+   - **ALWAYS end with CODE_CHANGES when implementing functionality**
 
 3. **Code examples must:**
    - Include all necessary imports and setup
@@ -92,12 +89,13 @@ RESPONSE FORMATTING RULES:
    - Use consistent variable naming and conventions
 
 4. **For Hedera SDK code:**
-   - Always import required classes: \`const { Client, AccountId, PrivateKey } = require('@hashgraph/sdk');\`
-   - Show proper client setup: \`Client.forTestnet().setOperator(accountId, privateKey)\`
+  - Always import required classes: const {{ Client, AccountId, PrivateKey }} = require('@hashgraph/sdk');
+
+   - Show proper client setup: Client.forTestnet().setOperator(accountId, privateKey)
    - Include proper error handling and resource cleanup
    - Use meaningful variable names and comments
 
-When you want to make changes to existing code, use this special format at the end of your response:
+**IMPORTANT**: When users ask you to implement, add, create, or modify code functionality, you should ALWAYS provide code changes using this special format at the end of your response:
 
 <CODE_CHANGES>
 [
@@ -128,7 +126,28 @@ For replace/delete operations, always include:
 - "lineRange": The line numbers being affected
 - "preview": A few lines before/after for context
 
-Only suggest code changes when the user specifically asks for modifications, improvements, or fixes to their existing code.
+**ALWAYS provide code changes when users ask you to:**
+- "implement a function" - Use "append" to add the function
+- "add functionality" - Use "append" or "insert" to add the code
+- "create a method" - Use "append" to add the method
+- "write code for..." - Use "append" to add the implementation
+- "modify existing code" - Use "replace" to update specific parts
+- "fix a bug" - Use "replace" to correct the issue
+- "improve the code" - Use "replace" to enhance existing code
+- **"syntax errors" or "fix these issues"** - Use "replace" to fix the entire problematic code section
+
+The user expects code to be automatically applied to their workspace when they request implementations.
+
+**EXAMPLES**:
+1. If user says "implement a get balance function":
+   - Explain what you're implementing
+   - Show the code example  
+   - Include <CODE_CHANGES> with "type": "append" to add the function
+
+2. If user says "fix these syntax errors":
+   - Identify the specific issues
+   - Show the corrected code
+   - Include <CODE_CHANGES> with "type": "replace" to fix the problematic section
 
 Common Hedera patterns you should demonstrate:
 - Account management and queries
@@ -144,12 +163,8 @@ Always provide complete, runnable examples that follow Hedera best practices.`
 RESPONSE FORMATTING RULES:
 1. **Always use proper markdown formatting:**
    - Use **bold** for important information and section headers
-   - Use \`inline code\` for technical terms, account IDs, and specific values
-   - Use proper code blocks for any code examples:
-   \`\`\`javascript
-   // Include helpful comments in code examples
-   const example = "well-formatted code";
-   \`\`\`
+   - Use inline code for technical terms, account IDs, and specific values
+   - Use proper code blocks for any code examples with javascript language specification
 
 2. **Structure your responses:**
    - Start with a clear, direct answer to the question
@@ -188,21 +203,15 @@ Focus on providing accurate, well-structured information that helps users unders
   let formattedInput = message;
   
   if (currentCode) {
-    formattedInput += `
-
-Here's my current code context:
-\`\`\`javascript
-${currentCode.length > 2000 ? currentCode.substring(0, 2000) + '\n// ... (code truncated for brevity)' : currentCode}
-\`\`\``;
+    formattedInput += '\n\nHere\'s my current code context:\n```javascript\n' + 
+      (currentCode.length > 2000 ? currentCode.substring(0, 2000) + '\n// ... (code truncated for brevity)' : currentCode) + 
+      '\n```';
   }
   
   if (terminalOutput) {
-    formattedInput += `
-
-Here's my current terminal output:
-\`\`\`
-${terminalOutput.length > 1000 ? terminalOutput.substring(terminalOutput.length - 1000) + '\n// ... (output truncated, showing last 1000 characters)' : terminalOutput}
-\`\`\``;
+    formattedInput += '\n\nHere\'s my current terminal output:\n```\n' + 
+      (terminalOutput.length > 1000 ? terminalOutput.substring(terminalOutput.length - 1000) + '\n// ... (output truncated, showing last 1000 characters)' : terminalOutput) + 
+      '\n```';
   }
 
   console.log('Formatted input:', formattedInput);
