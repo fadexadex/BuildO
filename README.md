@@ -8,9 +8,9 @@
 
 ## 🚀 Live Demo
 
-**Live URL:** [https://buildo-production-8398.up.railway.app/](https://buildo-production-8398.up.railway.app/)
+**Live URL:** [Click Here!](https://build-o.vercel.app/)
 
-**Demo Video:** [Demo Video Link - Will be added here]
+**Demo Video:** [Click Here!](https://youtu.be/cVV9ZzwM-zo?si=IboCFyC8q_BMhs_1)
 
 ---
 
