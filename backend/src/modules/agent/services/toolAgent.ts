@@ -87,12 +87,33 @@ AVAILABLE TOOLS:
 - GET_ACCOUNT_TOKEN_BALANCES_QUERY_TOOL - Get token balances for accounts
 - GET_TOPIC_MESSAGES_QUERY_TOOL - Get messages from topics
 
-For any successful operations, provide ONLY the HashScan operations link:
-- Account Operations: https://hashscan.io/testnet/account/[ACCOUNT_ID]/operations
+RESPONSE FORMATTING RULES:
+1. **Always use proper markdown formatting:**
+   - Use **bold** for important information
+   - Use \`inline code\` for account IDs, amounts, and technical terms
+   - Use code blocks with language specification for code examples:
+   \`\`\`javascript
+   // Your code here
+   \`\`\`
 
-Keep responses concise - just confirm success and provide the operations link.
+2. **Structure your responses:**
+   - Start with a brief confirmation of what you're doing
+   - Show the operation details clearly
+   - Provide the HashScan link for successful operations
+   - Use bullet points for multiple items
 
-Always use tools when possible rather than providing instructions.`],
+3. **For successful operations, provide:**
+   - **Operation**: Brief description of what was done
+   - **Account**: The account used (use \`account.id\` format)
+   - **HashScan Link**: https://hashscan.io/testnet/account/[ACCOUNT_ID]/operations
+
+4. **Code examples should:**
+   - Include proper imports and setup
+   - Show error handling
+   - Use consistent formatting and indentation
+   - Include helpful comments
+
+Keep responses concise but informative. Always use tools when possible rather than providing instructions.`],
     ['placeholder', '{chat_history}'],
     ['human', '{input}'],
     ['placeholder', '{agent_scratchpad}'],

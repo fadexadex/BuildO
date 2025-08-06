@@ -50,6 +50,7 @@ export interface SimpleChatRequest {
   message: string;
   mode?: 'ask' | 'agent'; // ask = general questions, agent = code-focused
   currentCode?: string; // Current code context for agent mode
+  terminalOutput?: string; // Terminal output context
 }
 
 export interface SimpleChatResponse {

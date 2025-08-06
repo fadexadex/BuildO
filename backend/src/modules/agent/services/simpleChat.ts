@@ -12,6 +12,7 @@ interface SimpleChatRequest {
   message: string;
   mode?: 'ask' | 'agent'; // ask = general questions, agent = code-focused
   currentCode?: string; // Current code context for agent mode
+  terminalOutput?: string; // Terminal output context
 }
 
 interface CodeChange {
@@ -37,7 +38,7 @@ interface SimpleChatResponse {
 }
 
 export async function handleSimpleChat(request: SimpleChatRequest): Promise<SimpleChatResponse> {
-  const { sessionId, message, mode = 'ask', currentCode } = request;
+  const { sessionId, message, mode = 'ask', currentCode, terminalOutput } = request;
 
 
   // Validate required fields
@@ -67,21 +68,43 @@ export async function handleSimpleChat(request: SimpleChatRequest): Promise<Simp
   const systemPrompt = mode === 'agent' 
     ? `You are a helpful coding assistant specializing in blockchain development, particularly Hedera Hashgraph. 
 
-When users ask questions:
-- Provide clear, practical code examples
-- Focus on Hedera SDK implementations in JavaScript/TypeScript
-- Include best practices and error handling
-- Explain concepts with working code snippets
-- Be concise but thorough in explanations
+RESPONSE FORMATTING RULES:
+1. **Always use proper markdown formatting:**
+   - Use **bold** for important information and headers
+   - Use \`inline code\` for variables, functions, and technical terms
+   - Use proper code blocks with language specification:
+   \`\`\`javascript
+   // Always include helpful comments
+   const example = "properly formatted code";
+   \`\`\`
 
-When you want to make changes to code, use this special format at the end of your response:
+2. **Structure your responses:**
+   - Start with a brief explanation of what you're addressing
+   - Provide clear, working code examples
+   - Explain key concepts and best practices
+   - Include error handling in code examples
+
+3. **Code examples must:**
+   - Include all necessary imports and setup
+   - Use proper indentation and formatting
+   - Include meaningful comments explaining each section
+   - Show error handling and cleanup (try/catch, client.close())
+   - Use consistent variable naming and conventions
+
+4. **For Hedera SDK code:**
+   - Always import required classes: \`const { Client, AccountId, PrivateKey } = require('@hashgraph/sdk');\`
+   - Show proper client setup: \`Client.forTestnet().setOperator(accountId, privateKey)\`
+   - Include proper error handling and resource cleanup
+   - Use meaningful variable names and comments
+
+When you want to make changes to existing code, use this special format at the end of your response:
 
 <CODE_CHANGES>
 [
   {{
     "type": "replace|insert|append|prepend|delete",
-    "description": "What this change does",
-    "code": "the new code to add",
+    "description": "Clear description of what this change does",
+    "code": "the new code to add (properly formatted)",
     "oldCode": "the original code being replaced (for replace/delete only)",
     "lineRange": {{"start": 5, "end": 10}},
     "position": 15,
@@ -107,32 +130,50 @@ For replace/delete operations, always include:
 
 Only suggest code changes when the user specifically asks for modifications, improvements, or fixes to their existing code.
 
-Common Hedera patterns you should know:
+Common Hedera patterns you should demonstrate:
 - Account management and queries
-- HBAR transfers
+- HBAR transfers with proper error handling
 - Token creation and management (HTS)
 - Consensus service (HCS) topics
-- Smart contracts (if applicable)
-- File service operations
 - Network and transaction handling
+- Proper client lifecycle management
 
-Always format code examples in proper JavaScript/TypeScript syntax with:
-\`\`\`javascript
-// Your code here
-\`\`\`
+Always provide complete, runnable examples that follow Hedera best practices.`
+    : `You are a helpful AI assistant with expertise in blockchain technology, particularly Hedera Hashgraph. 
 
-Include proper error handling and explain what each part does.`
-    : `You are a helpful AI assistant. Answer questions clearly and concisely. 
+RESPONSE FORMATTING RULES:
+1. **Always use proper markdown formatting:**
+   - Use **bold** for important information and section headers
+   - Use \`inline code\` for technical terms, account IDs, and specific values
+   - Use proper code blocks for any code examples:
+   \`\`\`javascript
+   // Include helpful comments in code examples
+   const example = "well-formatted code";
+   \`\`\`
+
+2. **Structure your responses:**
+   - Start with a clear, direct answer to the question
+   - Provide detailed explanations with proper formatting
+   - Use bullet points for lists and multiple concepts
+   - Include practical examples when relevant
+
+3. **For code examples:**
+   - Always specify the language in code blocks
+   - Include necessary imports and setup
+   - Add meaningful comments explaining the code
+   - Show proper error handling where applicable
 
 You can help with:
-- General questions and explanations
-- Technical concepts and definitions
-- Programming guidance and best practices
-- Problem solving approaches
-- Learning and education topics
-- Hedera blockchain concepts (without code execution)
+- **General questions** and explanations about blockchain concepts
+- **Technical concepts** and definitions related to Hedera
+- **Programming guidance** and best practices
+- **Problem solving approaches** for development challenges
+- **Learning resources** and educational topics
+- **Hedera blockchain concepts** (architecture, consensus, services)
 
-Be friendly, informative, and helpful in your responses. If users ask for code examples, provide them but explain that you cannot execute code directly.`;
+Be friendly, informative, and thorough in your responses. When providing code examples, make them complete and properly formatted, but explain that you cannot execute code directly - users should test code in their development environment.
+
+Focus on providing accurate, well-structured information that helps users understand both the concepts and practical implementation details.`;
 
   const prompt = ChatPromptTemplate.fromMessages([
     ['system', systemPrompt],
@@ -143,15 +184,26 @@ Be friendly, informative, and helpful in your responses. If users ask for code e
   // Get chat history from memory
   const chatHistory = await memory.chatHistory.getMessages();
   
-  // Format the input message with code context if provided (regardless of mode)
-  const formattedInput = currentCode
-    ? `${message}
+  // Format the input message with code and terminal context if provided
+  let formattedInput = message;
+  
+  if (currentCode) {
+    formattedInput += `
 
 Here's my current code context:
 \`\`\`javascript
 ${currentCode.length > 2000 ? currentCode.substring(0, 2000) + '\n// ... (code truncated for brevity)' : currentCode}
-\`\`\``
-    : message;
+\`\`\``;
+  }
+  
+  if (terminalOutput) {
+    formattedInput += `
+
+Here's my current terminal output:
+\`\`\`
+${terminalOutput.length > 1000 ? terminalOutput.substring(terminalOutput.length - 1000) + '\n// ... (output truncated, showing last 1000 characters)' : terminalOutput}
+\`\`\``;
+  }
 
   console.log('Formatted input:', formattedInput);
   
