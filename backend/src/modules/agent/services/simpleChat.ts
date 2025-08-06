@@ -40,33 +40,41 @@ interface SimpleChatResponse {
 export async function handleSimpleChat(request: SimpleChatRequest): Promise<SimpleChatResponse> {
   const { sessionId, message, mode = 'ask', currentCode, terminalOutput } = request;
 
-
   // Validate required fields
   if (!sessionId || !message) {
     throw new Error('Missing required fields: sessionId, message');
   }
 
-  // Initialize Groq LLM
-  const llm = new ChatGroq({
-    model: 'moonshotai/kimi-k2-instruct',
-    apiKey: process.env.GROQ_API_KEY,
-  });
-
-  // Get or create memory for the chat session
-  let memory = simpleChatMemories.get(sessionId);
-  if (!memory) {
-    memory = new BufferMemory({
-      memoryKey: 'chat_history',
-      inputKey: 'input',
-      outputKey: 'output',
-      returnMessages: true,
+  try {
+    // Initialize Groq LLM
+    const llm = new ChatGroq({
+      model: 'moonshotai/kimi-k2-instruct',
+      apiKey: process.env.GROQ_API_KEY,
     });
-    simpleChatMemories.set(sessionId, memory);
-  }
 
-  // Create different prompts based on mode
-  const systemPrompt = mode === 'agent' 
-    ? `You are a helpful coding assistant specializing in blockchain development, particularly Hedera Hashgraph. 
+    if (!process.env.GROQ_API_KEY) {
+      throw new Error('GROQ_API_KEY environment variable is not set');
+    }
+
+    // Get or create memory for the chat session
+    let memory = simpleChatMemories.get(sessionId);
+    if (!memory) {
+      try {
+        memory = new BufferMemory({
+          memoryKey: 'chat_history',
+          inputKey: 'input',
+          outputKey: 'output',
+          returnMessages: true,
+        });
+        simpleChatMemories.set(sessionId, memory);
+      } catch (memoryError) {
+        throw new Error(`Failed to initialize memory: ${memoryError instanceof Error ? memoryError.message : 'Memory creation failed'}`);
+      }
+    }
+
+    // Create different prompts based on mode
+    const systemPrompt = mode === 'agent' 
+      ? `You are a helpful coding assistant specializing in blockchain development, particularly Hedera Hashgraph. 
 
 RESPONSE FORMATTING RULES:
 1. **Always use proper markdown formatting:**
@@ -161,7 +169,7 @@ Common Hedera patterns you should demonstrate:
 - Proper client lifecycle management
 
 Always provide complete, runnable examples that follow Hedera best practices.`
-    : `You are a helpful AI assistant with expertise in blockchain technology, particularly Hedera Hashgraph. 
+      : `You are a helpful AI assistant with expertise in blockchain technology, particularly Hedera Hashgraph. 
 
 RESPONSE FORMATTING RULES:
 1. **Always use proper markdown formatting:**
@@ -193,77 +201,88 @@ Be friendly, informative, and thorough in your responses. When providing code ex
 
 Focus on providing accurate, well-structured information that helps users understand both the concepts and practical implementation details.`;
 
-  const prompt = ChatPromptTemplate.fromMessages([
-    ['system', systemPrompt],
-    ['placeholder', '{chat_history}'],
-    ['human', '{input}']
-  ]);
+    const prompt = ChatPromptTemplate.fromMessages([
+      ['system', systemPrompt],
+      ['placeholder', '{chat_history}'],
+      ['human', '{input}']
+    ]);
 
-  // Get chat history from memory
-  const chatHistory = await memory.chatHistory.getMessages();
-  
-  // Format the input message with code and terminal context if provided
-  let formattedInput = message;
-  
-  if (currentCode) {
-    formattedInput += '\n\nHere\'s my current code context:\n```javascript\n' + 
-      (currentCode.length > 2000 ? currentCode.substring(0, 2000) + '\n// ... (code truncated for brevity)' : currentCode) + 
-      '\n```';
-  }
-  
-  if (terminalOutput) {
-    formattedInput += '\n\nHere\'s my current terminal output:\n```\n' + 
-      (terminalOutput.length > 1000 ? terminalOutput.substring(terminalOutput.length - 1000) + '\n// ... (output truncated, showing last 1000 characters)' : terminalOutput) + 
-      '\n```';
-  }
+    // Get chat history from memory
+    const chatHistory = await memory.chatHistory.getMessages();
+    
+    // Format the input message with code and terminal context if provided
+    let formattedInput = message;
+    
+    if (currentCode) {
+      formattedInput += '\n\nHere\'s my current code context:\n```javascript\n' + 
+        (currentCode.length > 2000 ? currentCode.substring(0, 2000) + '\n// ... (code truncated for brevity)' : currentCode) + 
+        '\n```';
+    }
+    
+    if (terminalOutput) {
+      formattedInput += '\n\nHere\'s my current terminal output:\n```\n' + 
+        (terminalOutput.length > 1000 ? terminalOutput.substring(terminalOutput.length - 1000) + '\n// ... (output truncated, showing last 1000 characters)' : terminalOutput) + 
+        '\n```';
+    }
 
-  console.log('Formatted input:', formattedInput);
-  
-  // Format the prompt with history and input
-  const formattedPrompt = await prompt.formatMessages({
-    chat_history: chatHistory,
-    input: formattedInput
-  });
+    console.log('Formatted input:', formattedInput);
+    
+    // Format the prompt with history and input
+    const formattedPrompt = await prompt.formatMessages({
+      chat_history: chatHistory,
+      input: formattedInput
+    });
 
-  console.log('Formatted prompt:', formattedPrompt);
+    console.log('Formatted prompt:', formattedPrompt);
 
-  // Get response from LLM
-  const response = await llm.invoke(formattedPrompt);
-  const responseContent = response.content as string;
+    // Get response from LLM
+    const response = await llm.invoke(formattedPrompt);
+    const responseContent = response.content as string;
 
-  // Parse code changes if present
-  let codeChanges: CodeChange[] = [];
-  let cleanResponse = responseContent;
-  
-  if (mode === 'agent' && currentCode) {
-    const codeChangesMatch = responseContent.match(/<CODE_CHANGES>([\s\S]*?)<\/CODE_CHANGES>/);
-    if (codeChangesMatch) {
-      try {
-        const codeChangesJson = codeChangesMatch[1].trim();
-        codeChanges = JSON.parse(codeChangesJson);
-        // Remove the CODE_CHANGES block from the response
-        cleanResponse = responseContent.replace(/<CODE_CHANGES>[\s\S]*?<\/CODE_CHANGES>/, '').trim();
-      } catch (error) {
-        console.warn('Failed to parse code changes:', error);
-        // Continue without code changes if parsing fails
+    // Parse code changes if present
+    let codeChanges: CodeChange[] = [];
+    let cleanResponse = responseContent;
+    
+    if (mode === 'agent' && currentCode) {
+      const codeChangesMatch = responseContent.match(/<CODE_CHANGES>([\s\S]*?)<\/CODE_CHANGES>/);
+      if (codeChangesMatch) {
+        try {
+          const codeChangesJson = codeChangesMatch[1].trim();
+          codeChanges = JSON.parse(codeChangesJson);
+          // Remove the CODE_CHANGES block from the response
+          cleanResponse = responseContent.replace(/<CODE_CHANGES>[\s\S]*?<\/CODE_CHANGES>/, '').trim();
+        } catch (error) {
+          console.warn('Failed to parse code changes:', error);
+          // Continue without code changes if parsing fails
+        }
       }
     }
+
+    // Save the conversation to memory (save the clean response without CODE_CHANGES block)
+    await memory.saveContext(
+      { input: message },
+      { output: cleanResponse }
+    );
+
+    return {
+      sessionId,
+      response: cleanResponse,
+      mode,
+      success: true,
+      codeChanges: codeChanges.length > 0 ? codeChanges : undefined,
+      hasCodeChanges: codeChanges.length > 0
+    };
+  } catch (error) {
+    console.error('Error in handleSimpleChat:', error);
+    return {
+      sessionId,
+      response: `Error: ${error instanceof Error ? error.message : String(error)}`,
+      mode,
+      success: false,
+      codeChanges: [],
+      hasCodeChanges: false
+    };
   }
-
-  // Save the conversation to memory (save the clean response without CODE_CHANGES block)
-  await memory.saveContext(
-    { input: message },
-    { output: cleanResponse }
-  );
-
-  return {
-    sessionId,
-    response: cleanResponse,
-    mode,
-    success: true,
-    codeChanges: codeChanges.length > 0 ? codeChanges : undefined,
-    hasCodeChanges: codeChanges.length > 0
-  };
 }
 
 export function clearSimpleChatMemory(sessionId: string): boolean {

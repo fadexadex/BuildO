@@ -1,9 +1,10 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { spawn, exec } from 'child_process';
 import { writeFileSync, unlinkSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { promisify } from 'util';
+import { AppError } from '../../middlewares/error.handler.js';
 
 const execAsync = promisify(exec);
 
@@ -14,22 +15,26 @@ interface RunRequest {
 // Use the backend's existing node_modules (where @hashgraph/sdk is already installed)
 const BACKEND_NODE_MODULES = join(process.cwd(), 'node_modules');
 
-export async function executeCode(req: Request, res: Response) {
+export async function executeCode(req: Request, res: Response, next: NextFunction) {
   try {
     const { code } = req.body as RunRequest;
 
     if (!code || typeof code !== 'string') {
-      res.status(400).json({ 
-        error: 'Code is required',
-        success: false 
-      });
-      return;
+      throw new AppError('Code is required and must be a string', 400);
     }
 
     // Create a unique temporary directory for this execution
     const executionId = `hedera-playground-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const tempDir = join(tmpdir(), executionId);
-    mkdirSync(tempDir, { recursive: true });
+    
+    try {
+      mkdirSync(tempDir, { recursive: true });
+    } catch (setupError) {
+      throw new AppError(
+        `Failed to create execution directory: ${setupError instanceof Error ? setupError.message : 'Unknown error'}`,
+        500
+      );
+    }
 
     try {
       // Create the execution file directly (no package.json or npm install needed)
@@ -118,7 +123,14 @@ process.on('uncaughtException', (error) => {
 })();
 `;
 
-      writeFileSync(tempFile, wrappedCode);
+      try {
+        writeFileSync(tempFile, wrappedCode);
+      } catch (writeError) {
+        throw new AppError(
+          `Failed to write execution file: ${writeError instanceof Error ? writeError.message : 'Unknown error'}`,
+          500
+        );
+      }
 
       // Execute the code and return a promise
       const result = await new Promise<{ output: string; exitCode: number; success: boolean }>((resolve) => {
@@ -227,18 +239,21 @@ process.on('uncaughtException', (error) => {
       });
 
     } catch (setupError) {
-      res.status(500).json({ 
-        error: 'Setup failed', 
-        output: `❌ Failed to setup execution environment: ${setupError instanceof Error ? setupError.message : 'Unknown error'}`,
-        success: false
-      });
+      throw new AppError(
+        `Execution setup failed: ${setupError instanceof Error ? setupError.message : 'Unknown error'}`,
+        500
+      );
     }
 
   } catch (error) {
-    res.status(500).json({ 
-      error: 'Internal server error', 
-      output: `❌ Server error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      success: false
-    });
+    console.error('Error in executeCode:', error);
+    if (error instanceof AppError) {
+      next(error);
+    } else {
+      next(new AppError(
+        `Code execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        500
+      ));
+    }
   }
 }

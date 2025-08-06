@@ -8,7 +8,7 @@
 
 ## 🚀 Live Demo
 
-**Live URL:** [Coming Soon - Deployment URL will be added here]
+**Live URL:** [https://buildo-production-8398.up.railway.app/](https://buildo-production-8398.up.railway.app/)
 
 **Demo Video:** [Demo Video Link - Will be added here]
 
@@ -138,7 +138,7 @@ nano .env.local
 **Frontend Environment Variables (.env.local):**
 ```env
 # Backend API URL
-NEXT_PUBLIC_API_URL=http://localhost:3001
+NEXT_PUBLIC_API_URL=https://buildo-production-8398.up.railway.app
 
 # Optional: Analytics or other frontend configs
 ```
@@ -158,8 +158,10 @@ npm run dev
 ```
 
 ### 5. Access the Application
-- **Frontend:** http://localhost:3000
-- **Backend API:** http://localhost:3001
+- **Frontend (Development):** http://localhost:3000
+- **Backend API (Development):** http://localhost:3001
+- **Production Frontend:** [https://buildo-production-8398.up.railway.app/](https://buildo-production-8398.up.railway.app/)
+- **Production Backend API:** https://buildo-production-8398.up.railway.app
 
 ---
 
