@@ -212,34 +212,18 @@ main();`;
       `Line ${error.line}: ${error.message}`
     ).join('\n')
     
-    const correctionPrompt = `The code you just applied has syntax errors. Please fix these issues:
+    const correctionPrompt = `AUTO-CORRECTION: The code you just applied has syntax errors. Please fix these issues and provide CODE_CHANGES:
 
 ERRORS DETECTED:
 ${errorDescriptions}
 
-CURRENT CODE WITH ERRORS:
-\`\`\`javascript
-${codeWithErrors}
-\`\`\`
-
-Please provide corrected code using the CODE_CHANGES format to fix these syntax errors.`
+This is an automatic reprompt - please analyze the current workspace code and provide corrected CODE_CHANGES to fix these syntax errors.`
 
     try {
-      // Send correction request to AI
-      const correctionMessage: Message = {
-        id: `correction-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        type: "user",
-        content: correctionPrompt,
-        timestamp: new Date(),
-        status: "pending"
-      }
-
-      // Add the correction request to workspace messages
-      setWorkspaceMessages((prev) => [...prev, correctionMessage])
-
-      // Execute the correction request
+      // Execute the correction request silently (no user message displayed)
       const responseMessage = await executeSimpleChatRequest(correctionPrompt)
       
+      // Only add the AI response to messages (not the correction prompt)
       setWorkspaceMessages((prev) => [...prev, responseMessage])
 
       toast({
@@ -1121,8 +1105,18 @@ Your account (**${accountId}**) is connected and ready for development.`,
   }
 
   const executeCode = async () => {
-    // Get the most current code from the ref to ensure we're using the latest version
-    const codeToExecute = currentCodeRef.current.trim()
+    // Get the most current code - check Monaco editor first, then fallback to ref
+    let codeToExecute = currentCodeRef.current.trim()
+    
+    // If Monaco editor is available, get the current value directly from it
+    if (monacoEditorRef.current) {
+      const editorValue = monacoEditorRef.current.getValue()
+      if (editorValue && editorValue.trim()) {
+        codeToExecute = editorValue.trim()
+        // Update the ref to match the editor
+        currentCodeRef.current = editorValue
+      }
+    }
     
     if (!codeToExecute) return;
     
@@ -1264,16 +1258,6 @@ Your account (**${accountId}**) is connected and ready for development.`,
              (trimmed.startsWith('const {') && trimmed.includes('} = require('));
     });
     
-    // Get non-import lines from new code
-    const newCodeWithoutImports = newLines.filter(line => {
-      const trimmed = line.trim();
-      return !trimmed.startsWith('import ') && 
-             !(trimmed.startsWith('const ') && line.includes('require(')) &&
-             !trimmed.startsWith('require(') &&
-             !(trimmed.startsWith('const {') && trimmed.includes('} = require(')) &&
-             trimmed !== '';
-    });
-    
     // Merge imports intelligently (avoid duplicates, merge destructuring)
     const mergedImports = [...existingImports];
     
@@ -1315,126 +1299,150 @@ Your account (**${accountId}**) is connected and ready for development.`,
       }
     });
     
-    // Get existing code without imports
-    const existingCodeWithoutImports = existingLines.filter(line => {
-      const trimmed = line.trim();
-      return !trimmed.startsWith('import ') && 
-             !(trimmed.startsWith('const ') && line.includes('require(')) &&
-             !trimmed.startsWith('require(') &&
-             !(trimmed.startsWith('const {') && trimmed.includes('} = require('));
-    });
-    
-    // Smart merging strategy: add functions before main(), add code inside main()
-    const existingCodeText = existingCodeWithoutImports.join('\n');
-    
-    // Separate functions from the new code
-    const newFunctions: string[] = [];
-    const newMainCode: string[] = [];
-    let currentFunction: string[] = [];
+    // Extract useful code from the new code, handling function definitions
+    const extractedCode: string[] = [];
     let inFunction = false;
+    let functionContent: string[] = [];
+    let braceCount = 0;
     
-    for (const line of newCodeWithoutImports) {
+    for (const line of newLines) {
       const trimmed = line.trim();
+      
+      // Skip imports and empty lines
+      if (trimmed.startsWith('import ') || 
+          (trimmed.startsWith('const ') && line.includes('require(')) ||
+          trimmed.startsWith('require(') ||
+          (trimmed.startsWith('const {') && trimmed.includes('} = require(')) ||
+          trimmed === '' ||
+          trimmed === 'main();') {
+        continue;
+      }
       
       // Check if this is a function declaration
       if (trimmed.match(/^(async\s+)?function\s+\w+\s*\(/)) {
-        if (currentFunction.length > 0) {
-          newFunctions.push(currentFunction.join('\n'));
-        }
-        currentFunction = [line];
         inFunction = true;
-      } else if (inFunction && trimmed === '}' && !line.startsWith('  ')) {
-        // End of function (closing brace at root level)
-        currentFunction.push(line);
-        newFunctions.push(currentFunction.join('\n'));
-        currentFunction = [];
-        inFunction = false;
-      } else if (inFunction) {
-        currentFunction.push(line);
-      } else if (trimmed && !trimmed.startsWith('//')) {
-        // Regular code that should go in main()
-        newMainCode.push(line);
+        functionContent = [];
+        braceCount = 0;
+        continue;
+      }
+      
+      if (inFunction) {
+        braceCount += (line.match(/{/g) || []).length - (line.match(/}/g) || []).length;
+        
+        if (braceCount > 0 || !trimmed.startsWith('}')) {
+          functionContent.push(line);
+        }
+        
+        if (braceCount <= 0 && trimmed.startsWith('}')) {
+          // End of function - extract the useful parts
+          const functionBody = functionContent.join('\n');
+          
+          // Extract the core logic from try-catch blocks
+          const tryMatch = functionBody.match(/try\s*{\s*\n([\s\S]*?)\n\s*}\s*catch/);
+          if (tryMatch) {
+            const tryContent = tryMatch[1];
+            const usefulLines = tryContent.split('\n').filter(line => {
+              const trimmed = line.trim();
+              return trimmed && 
+                     !trimmed.startsWith('//') &&
+                     !trimmed.startsWith('return ') &&
+                     !trimmed.startsWith('throw ');
+            });
+            extractedCode.push(...usefulLines);
+          } else {
+            // Extract all non-return, non-throw lines from function
+            const usefulLines = functionContent.filter(line => {
+              const trimmed = line.trim();
+              return trimmed && 
+                     !trimmed.startsWith('//') &&
+                     !trimmed.startsWith('return ') &&
+                     !trimmed.startsWith('throw ') &&
+                     !trimmed.startsWith('{') &&
+                     !trimmed.startsWith('}');
+            });
+            extractedCode.push(...usefulLines);
+          }
+          
+          inFunction = false;
+          functionContent = [];
+        }
+      } else {
+        // Regular code that's not in a function
+        if (trimmed && !trimmed.startsWith('//')) {
+          extractedCode.push(line);
+        }
       }
     }
     
-    // Add any remaining function
-    if (currentFunction.length > 0) {
-      newFunctions.push(currentFunction.join('\n'));
-    }
+    // Find the main function in existing code and insert the extracted code
+    const mainFunctionStart = existingCode.indexOf('async function main()');
+    const mainFunctionEnd = existingCode.lastIndexOf('main();');
     
-    // Find the main function and its structure
-    const mainFunctionRegex = /(async\s+function\s+main\s*\(\s*\)\s*{\s*\n)([\s\S]*?)(\n\s*}\s*\n\s*main\s*\(\s*\)\s*;?\s*$)/;
-    const mainMatch = existingCodeText.match(mainFunctionRegex);
-    
-    if (mainMatch && (newFunctions.length > 0 || newMainCode.length > 0)) {
-      const mainStart = mainMatch[1];
-      const mainBody = mainMatch[2];
-      const mainEnd = mainMatch[3];
+    if (mainFunctionStart !== -1 && mainFunctionEnd !== -1 && extractedCode.length > 0) {
+      const beforeMain = existingCode.substring(0, mainFunctionStart);
+      const mainFunction = existingCode.substring(mainFunctionStart, mainFunctionEnd);
+      const afterMain = existingCode.substring(mainFunctionEnd);
       
-      // Find where to insert new code in main function
-      // Look for the "Start your code here" comment or similar insertion points
-      const insertionPoints = [
-        /(\s*\/\/\s*Start your code here[\s\S]*?)(\n\s*\/\/\s*Example:)/,
-        /(\s*console\.log\("✅ Connected to Hedera Testnet"\);\s*\n\s*console\.log\("🏦 Account ID:"[\s\S]*?\n)([\s\S]*)/
+      // Look for insertion points in the main function
+      const insertionPatterns = [
+        // After the "Start your code here" comment
+        /(\s*\/\/\s*Start your code here[\s\S]*?)(\s*\/\/\s*Example:)/,
+        // After the console.log statements
+        /(\s*console\.log\("🏦 Account ID:"[\s\S]*?\n)([\s\S]*)/,
+        // Before the example comment block
+        /(\s*)(\/\/\s*Example:[\s\S]*)/,
+        // Before the catch block
+        /(\s*)(\s*} catch \(error\))/
       ];
       
-      let modifiedMainBody = mainBody;
+      let modifiedMainFunction = mainFunction;
       let insertionMade = false;
       
-      for (const pattern of insertionPoints) {
-        const insertMatch = mainBody.match(pattern);
-        if (insertMatch) {
-          const beforeInsertion = insertMatch[1];
-          const afterInsertion = insertMatch[2] || '';
+      for (const pattern of insertionPatterns) {
+        const match = mainFunction.match(pattern);
+        if (match) {
+          const beforeInsertion = match[1];
+          const afterInsertion = match[2] || '';
           
-          // Add proper indentation to new main code
-          const indentedNewCode = newMainCode
+          // Add proper indentation to extracted code
+          const indentedNewCode = extractedCode
             .map(line => line.trim() ? `    ${line}` : '')
             .filter(line => line.trim())
             .join('\n');
           
-          if (indentedNewCode) {
-            modifiedMainBody = beforeInsertion + '\n    \n    // Added functionality:\n' + indentedNewCode + '\n    ' + afterInsertion;
-            insertionMade = true;
-            break;
-          }
+          modifiedMainFunction = beforeInsertion + '\n    \n    // Added functionality:\n' + indentedNewCode + '\n    ' + afterInsertion;
+          insertionMade = true;
+          break;
         }
       }
       
-      // If no insertion point found, add at the end of main function before closing
-      if (!insertionMade && newMainCode.length > 0) {
-        const indentedNewCode = newMainCode
-          .map(line => line.trim() ? `    ${line}` : '')
-          .filter(line => line.trim())
-          .join('\n');
-        
-        modifiedMainBody = mainBody + '\n    \n    // Added functionality:\n' + indentedNewCode + '\n  ';
+      // If no specific insertion point found, add before the catch block
+      if (!insertionMade) {
+        const catchMatch = mainFunction.match(/(\s*)(} catch \(error\))/);
+        if (catchMatch && catchMatch.index !== undefined) {
+          const beforeCatch = mainFunction.substring(0, catchMatch.index);
+          const afterCatch = mainFunction.substring(catchMatch.index);
+          
+          const indentedNewCode = extractedCode
+            .map(line => line.trim() ? `    ${line}` : '')
+            .filter(line => line.trim())
+            .join('\n');
+          
+          modifiedMainFunction = beforeCatch + '\n    // Added functionality:\n' + indentedNewCode + '\n  ' + afterCatch;
+        }
       }
       
       // Construct the final code
       const result = [
         ...mergedImports,
         '',
-        ...newFunctions,
-        newFunctions.length > 0 ? '' : null,
-        mainStart + modifiedMainBody + mainEnd
+        beforeMain + modifiedMainFunction + afterMain
       ].filter(line => line !== null).join('\n');
       
       return result;
     } else {
-      // No main function found or no new code, just append everything
-      const result = [
-        ...mergedImports,
-        '',
-        ...newFunctions,
-        newFunctions.length > 0 ? '' : null,
-        ...existingCodeWithoutImports,
-        newMainCode.length > 0 ? '' : null,
-        newMainCode.length > 0 ? '// Added code:' : null,
-        ...newMainCode
-      ].filter(line => line !== null);
-      
-      return result.join('\n');
+      // No main function found or no extracted code, return existing code
+      return existingCode;
     }
   }, [])
 
@@ -1487,7 +1495,7 @@ Your account (**${accountId}**) is connected and ready for development.`,
         variant: "destructive"
       });
     }
-  }, [playgroundCode, toast, setMode, setPlaygroundCode])
+  }, [playgroundCode, toast, setMode, setPlaygroundCode, mergeCodeIntelligently])
 
 
 
@@ -1500,7 +1508,7 @@ Your account (**${accountId}**) is connected and ready for development.`,
       delete (window as any).copyCodeBlock;
       delete (window as any).addCodeToWorkspace;
     };
-  }, [playgroundCode]);
+  }, [copyCodeBlock, addCodeToWorkspace]);
 
   // Update the ref whenever playgroundCode changes
   useEffect(() => {

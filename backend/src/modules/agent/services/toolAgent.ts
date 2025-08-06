@@ -105,13 +105,20 @@ RESPONSE FORMATTING RULES:
    - **HashScan Link**: https://hashscan.io/testnet/account/[ACCOUNT_ID]/operations
 
 4. **Code examples should:**
+   - **ONLY generate JavaScript code** - no TypeScript, Python, or other languages
    - Include proper imports and setup
    - Show error handling
    - Use consistent formatting and indentation
    - Include helpful comments
 
+5. **For "Add to Workspace" functionality:**
+   - When users want to add code to workspace, assume they have a base template with main() function
+   - Provide code that can be intelligently merged into existing structure
+   - Focus on the functional logic, not the boilerplate setup
+   - Use clear function names and proper error handling
+   - Assume client setup and imports are already present
+
 Keep responses concise but informative. Always use tools when possible rather than providing instructions.`],
-    ['placeholder', '{chat_history}'],
     ['human', '{input}'],
     ['placeholder', '{agent_scratchpad}'],
   ]);
