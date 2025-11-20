@@ -198,4 +198,131 @@ export class SimpleChatAPI {
       throw error instanceof Error ? error : new Error('Unknown error occurred');
     }
   }
+}
+
+// ZK Quest API
+export interface CompileCircuitRequest {
+  circuitCode: string;
+  circuitName: string;
+}
+
+export interface CompileCircuitResponse {
+  message: string;
+  circuitName: string;
+  artifacts: any;
+  success?: boolean;
+  error?: string;
+}
+
+export interface GenerateProofRequest {
+  circuitName: string;
+  inputs: Record<string, any>;
+}
+
+export interface GenerateProofResponse {
+  message: string;
+  proof: any;
+  publicSignals: any[];
+  success?: boolean;
+  error?: string;
+}
+
+export interface VerifyProofRequest {
+  proof: any;
+  publicSignals: any[];
+  verificationKey: any;
+}
+
+export interface VerifyProofResponse {
+  message: string;
+  valid: boolean;
+  success?: boolean;
+  error?: string;
+}
+
+export class ZkAPI {
+  static async compileCircuit(request: CompileCircuitRequest): Promise<CompileCircuitResponse> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/zk/compile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error compiling circuit:', error);
+      throw error instanceof Error ? error : new Error('Unknown error occurred');
+    }
+  }
+
+  static async generateProof(request: GenerateProofRequest): Promise<GenerateProofResponse> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/zk/generate-proof`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error generating proof:', error);
+      throw error instanceof Error ? error : new Error('Unknown error occurred');
+    }
+  }
+
+  static async verifyProof(request: VerifyProofRequest): Promise<VerifyProofResponse> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/zk/verify-proof`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error verifying proof:', error);
+      throw error instanceof Error ? error : new Error('Unknown error occurred');
+    }
+  }
+
+  static async getLevelTemplate(levelId: number): Promise<any> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/zk/level/${levelId}/template`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error getting level template:', error);
+      throw error instanceof Error ? error : new Error('Unknown error occurred');
+    }
+  }
 } 
