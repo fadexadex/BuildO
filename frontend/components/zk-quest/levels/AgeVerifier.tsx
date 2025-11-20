@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle, Lightbulb, Trophy, ArrowLeft, Lock, Unlock, ArrowRight } from 'lucide-react';
 import { useGameState } from '@/hooks/use-game-state';
+import { CollapsibleLevelCard } from '../CollapsibleLevelCard';
 
 const TEMPLATE_CODE = `pragma circom 2.0.0;
 
@@ -181,7 +182,61 @@ export default function AgeVerifier({ onComplete, onBack }: AgeVerifierProps) {
   };
 
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
+    <div className="relative min-h-screen bg-background">
+      <CollapsibleLevelCard 
+        levelId="age-verifier" 
+        title="Level 5: Age Verifier"
+        className="pointer-events-auto"
+      >
+        <p className="text-gray-300 text-sm mb-4">
+          Prove you're 18+ without revealing your exact age. Build a circuit that keeps sensitive data private while still convincing verifiers.
+        </p>
+        <div className="grid grid-cols-2 gap-2 text-xs text-gray-300 mb-4">
+          <div className="bg-slate-800/70 p-2 rounded border border-slate-700">
+            <div className="text-[11px] uppercase tracking-wide text-slate-400">Status</div>
+            <div className="text-base font-semibold text-white">
+              {completed ? 'Completed' : 'In Progress'}
+            </div>
+          </div>
+          <div className="bg-slate-800/70 p-2 rounded border border-slate-700">
+            <div className="text-[11px] uppercase tracking-wide text-slate-400">Attempts</div>
+            <div className="text-base font-semibold text-white">{attempts}</div>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button 
+            variant="outline" 
+            className="flex-1 border-purple-500/50 text-white" 
+            onClick={() => setShowHints(prev => !prev)}
+          >
+            {showHints ? 'Hide Hints Panel' : 'Show Hints Panel'}
+          </Button>
+          <Button 
+            onClick={handleShowSolution} 
+            disabled={showSolution} 
+            className="bg-purple-600 hover:bg-purple-700 flex-1"
+          >
+            {showSolution ? 'Solution Loaded' : 'Load Solution'}
+          </Button>
+          <Button 
+            variant="outline" 
+            className="flex-1" 
+            onClick={onBack || returnToMap}
+          >
+            Back to Map
+          </Button>
+          {completed && nextLevel && (
+            <Button 
+              onClick={() => navigateToLevel(nextLevel.world, nextLevel.id)} 
+              className="bg-green-600 hover:bg-green-700 flex-1"
+            >
+              Next Level <ArrowRight className="ml-2 w-4 h-4" />
+            </Button>
+          )}
+        </div>
+      </CollapsibleLevelCard>
+
+      <div className="container mx-auto p-6 max-w-7xl pt-36">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
@@ -393,5 +448,6 @@ export default function AgeVerifier({ onComplete, onBack }: AgeVerifierProps) {
         <div>XP Reward: {attempts <= 1 ? '500' : attempts <= 3 ? '350' : '250'}</div>
       </div>
     </div>
+  </div>
   );
 }

@@ -16,13 +16,20 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ) => {
-  console.error('Error Handler:', {
-    message: err.message,
-    stack: err.stack,
-    url: req.url,
-    method: req.method,
-    body: req.body
-  });
+  // Enhanced terminal logging with better visibility
+  console.error('\n' + '='.repeat(80));
+  console.error('🔴 ERROR CAUGHT BY ERROR HANDLER');
+  console.error('='.repeat(80));
+  console.error('Message:', err.message);
+  console.error('URL:', req.url);
+  console.error('Method:', req.method);
+  if (Object.keys(req.body).length > 0) {
+    console.error('Request Body:', JSON.stringify(req.body, null, 2));
+  }
+  if (err.stack) {
+    console.error('Stack Trace:', err.stack);
+  }
+  console.error('='.repeat(80) + '\n');
 
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({ 

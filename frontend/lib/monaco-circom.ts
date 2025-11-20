@@ -253,6 +253,12 @@ export const circomCompletionProvider = {
 
 // Register the language with Monaco
 export const registerCircomLanguage = (monaco: any) => {
+  // Check if already registered to avoid duplicates/errors
+  const languages = monaco.languages.getLanguages();
+  if (languages.some((lang: any) => lang.id === 'circom')) {
+    return;
+  }
+
   // Register language
   monaco.languages.register(circomLanguageDefinition);
 

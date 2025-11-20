@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from 'react';
 import { animated, useSpring } from '@react-spring/three';
 import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { CollapsibleLevelCard } from '../CollapsibleLevelCard';
 import { useGameState } from '@/hooks/use-game-state';
 import { submitProofToHedera } from '@/lib/hedera-api';
 import { ArrowRight } from 'lucide-react';
@@ -285,12 +285,14 @@ export default function ColorGame() {
   };
 
   return (
-    <div className="w-full h-screen flex flex-col">
+    <div className="w-full h-screen flex flex-col relative">
       {/* Info Panel */}
-      <div className="absolute top-4 left-4 right-4 z-10 pointer-events-none">
-        <Card className="p-4 max-w-2xl mx-auto pointer-events-auto bg-black/70 backdrop-blur-sm border-purple-500/50">
-          <h2 className="text-2xl font-bold text-white mb-2">Level 1: Color Game</h2>
-          <p className="text-gray-300 mb-4">
+      <CollapsibleLevelCard 
+        levelId="color-game" 
+        title="Level 1: Color Game"
+        className="pointer-events-auto"
+      >
+          <p className="text-gray-300 mb-4 text-sm">
             {gamePhase === 'intro' && "A magician puts a red ball in their left hand and a blue ball in their right hand. They shuffle behind their back. Can they prove the balls were swapped without showing you?"}
             {gamePhase === 'playing' && "Click the balls to swap them. This simulates what happens behind the magician's back."}
             {gamePhase === 'reveal' && "Verifying the proof..."}
@@ -298,40 +300,39 @@ export default function ColorGame() {
           </p>
           
           {gamePhase === 'playing' && (
-            <div className="text-gray-300 mb-2">
+            <div className="text-gray-300 mb-2 text-sm">
               Swaps: {swapCount} | Selected: {selectedBall ? selectedBall.toUpperCase() : 'None'}
             </div>
           )}
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {gamePhase === 'intro' && (
-              <Button onClick={startGame} className="bg-purple-600 hover:bg-purple-700">
+              <Button onClick={startGame} className="bg-purple-600 hover:bg-purple-700 w-full">
                 Start Game
               </Button>
             )}
             {gamePhase === 'playing' && (
-              <Button onClick={checkAnswer} className="bg-green-600 hover:bg-green-700">
+              <Button onClick={checkAnswer} className="bg-green-600 hover:bg-green-700 w-full">
                 Verify Proof
               </Button>
             )}
             {gamePhase === 'success' && (
-              <div className="flex gap-2">
-                <Button onClick={resetGame} className="bg-blue-600 hover:bg-blue-700">
+              <>
+                <Button onClick={resetGame} className="bg-blue-600 hover:bg-blue-700 flex-1">
                   Play Again
                 </Button>
                 {nextLevel && (
                   <Button 
                     onClick={() => navigateToLevel(nextLevel.world, nextLevel.id)} 
-                    className="bg-green-600 hover:bg-green-700"
+                    className="bg-green-600 hover:bg-green-700 flex-1"
                   >
                     Next Level <ArrowRight className="ml-2 w-4 h-4" />
                   </Button>
                 )}
-              </div>
+              </>
             )}
           </div>
-        </Card>
-      </div>
+      </CollapsibleLevelCard>
 
       {/* 3D Canvas */}
       <div className="flex-1">

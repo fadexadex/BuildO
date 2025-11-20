@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { 
   chatWithAgent, 
   simpleChat,
+  circuitDesign,
   clearSessionMemory, 
   clearAllSessionMemories,
   clearChatSessionMemory
@@ -14,6 +15,9 @@ router.post('/chat', chatWithAgent);
 
 // Simple Chat Routes (new functionality - ask/agent modes)
 router.post('/simple-chat', simpleChat);
+
+// Circuit Design Routes (new)
+router.post('/circuit-design', circuitDesign);
 
 // Simple Chat Session Management
 router.delete('/simple-chat/clear-session', clearChatSessionMemory);

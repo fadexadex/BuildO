@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { getCircomCompilerService } from "./services/circom-compiler.js";
+import { getCircomCompilerService, formatCircomErrors } from "./services/circom-compiler.js";
 import { getProofGeneratorService, ProvingSystem } from "./services/proof-generator.js";
 import { getProofVerifierService } from "./services/proof-verifier.js";
 import { getHederaService } from "./services/hedera-proof-submitter.js";
@@ -38,9 +38,24 @@ export class ZkController {
       );
 
       if (!result.success) {
+        // Format errors for display
+        const formattedErrors = result.errors && result.errors.length > 0 
+          ? formatCircomErrors(result.errors) 
+          : 'Compilation failed';
+        
+        // Log to backend console
+        if (result.errors && result.errors.length > 0) {
+          console.error('\n========================================');
+          console.error('❌ CIRCUIT COMPILATION FAILED');
+          console.error('========================================');
+          console.error(formattedErrors);
+          console.error('========================================\n');
+        }
+        
         return res.status(400).json({
           error: "Compilation failed",
           errors: result.errors,
+          formattedErrors: formattedErrors, // Send formatted version for UI
           warnings: result.warnings,
         });
       }
@@ -81,9 +96,24 @@ export class ZkController {
         circuitName
       );
 
+      // Format errors for display
+      const formattedErrors = !result.valid && result.errors && result.errors.length > 0
+        ? formatCircomErrors(result.errors)
+        : undefined;
+      
+      // Log validation errors to console for easy debugging
+      if (formattedErrors) {
+        console.error('\n========================================');
+        console.error('❌ CIRCUIT VALIDATION FAILED');
+        console.error('========================================');
+        console.error(formattedErrors);
+        console.error('========================================\n');
+      }
+
       res.json({
         valid: result.valid,
         errors: result.errors,
+        formattedErrors: formattedErrors, // Send formatted version for UI
       });
     } catch (error) {
       console.error("Validation error:", error);
@@ -162,9 +192,26 @@ export class ZkController {
       );
 
       if (!result.success) {
+        // Format errors for display
+        const formattedErrors = result.errors && result.errors.length > 0
+          ? result.errors.join('\n')
+          : 'Proof generation failed';
+        
+        // Log formatted errors to console for easy debugging
+        if (result.errors && result.errors.length > 0) {
+          console.error('\n========================================');
+          console.error('❌ PROOF GENERATION FAILED');
+          console.error('========================================');
+          result.errors.forEach((error: string) => {
+            console.error(error);
+          });
+          console.error('========================================\n');
+        }
+        
         return res.status(400).json({
           error: "Proof generation failed",
           errors: result.errors,
+          formattedErrors: formattedErrors, // Send formatted version for UI
         });
       }
 
@@ -213,9 +260,26 @@ export class ZkController {
       );
 
       if (!result.success) {
+        // Format errors for display
+        const formattedErrors = result.errors && result.errors.length > 0
+          ? result.errors.join('\n')
+          : 'Witness calculation failed';
+        
+        // Log formatted errors to console for easy debugging
+        if (result.errors && result.errors.length > 0) {
+          console.error('\n========================================');
+          console.error('❌ WITNESS CALCULATION FAILED');
+          console.error('========================================');
+          result.errors.forEach((error: string) => {
+            console.error(error);
+          });
+          console.error('========================================\n');
+        }
+        
         return res.status(400).json({
           error: "Witness calculation failed",
           errors: result.errors,
+          formattedErrors: formattedErrors, // Send formatted version for UI
         });
       }
 
@@ -262,9 +326,26 @@ export class ZkController {
       );
 
       if (!result.success) {
+        // Format errors for display
+        const formattedErrors = result.errors && result.errors.length > 0
+          ? result.errors.join('\n')
+          : 'Setup failed';
+        
+        // Log formatted errors to console for easy debugging
+        if (result.errors && result.errors.length > 0) {
+          console.error('\n========================================');
+          console.error('❌ CIRCUIT SETUP FAILED');
+          console.error('========================================');
+          result.errors.forEach((error: string) => {
+            console.error(error);
+          });
+          console.error('========================================\n');
+        }
+        
         return res.status(400).json({
           error: "Setup failed",
           errors: result.errors,
+          formattedErrors: formattedErrors, // Send formatted version for UI
         });
       }
 
@@ -364,9 +445,26 @@ export class ZkController {
       }
 
       if (!result.success) {
+        // Format errors for display
+        const formattedErrors = result.errors && result.errors.length > 0
+          ? result.errors.join('\n')
+          : 'Verification failed';
+        
+        // Log formatted errors to console for easy debugging
+        if (result.errors && result.errors.length > 0) {
+          console.error('\n========================================');
+          console.error('❌ PROOF VERIFICATION FAILED');
+          console.error('========================================');
+          result.errors.forEach((error: string) => {
+            console.error(error);
+          });
+          console.error('========================================\n');
+        }
+        
         return res.status(400).json({
           error: "Verification failed",
           errors: result.errors,
+          formattedErrors: formattedErrors, // Send formatted version for UI
         });
       }
 
@@ -537,9 +635,24 @@ export class ZkController {
       );
 
       if (!compilationResult.success) {
+        // Format errors for display
+        const formattedErrors = compilationResult.errors && compilationResult.errors.length > 0
+          ? formatCircomErrors(compilationResult.errors)
+          : 'Compilation failed';
+        
+        // Log formatted errors to console for easy debugging
+        if (compilationResult.errors && compilationResult.errors.length > 0) {
+          console.error('\n========================================');
+          console.error('❌ CIRCUIT COMPILATION FAILED (Level Complete)');
+          console.error('========================================');
+          console.error(formattedErrors);
+          console.error('========================================\n');
+        }
+        
         return res.status(400).json({
           error: "Circuit compilation failed",
           errors: compilationResult.errors,
+          formattedErrors: formattedErrors, // Send formatted version for UI
         });
       }
 

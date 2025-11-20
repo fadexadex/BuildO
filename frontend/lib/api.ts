@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://buildo-production-8398.up.railway.app';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 export interface ChatRequest {
   sessionId: string;
@@ -200,6 +200,25 @@ export class SimpleChatAPI {
   }
 }
 
+export class CircuitAgentAPI {
+  static async design(prompt: string, action: 'generate' | 'explain' = 'generate', code?: string): Promise<{ success: boolean, data: string, error?: string }> {
+      try {
+          const response = await fetch(`${API_BASE_URL}/agent/circuit-design`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prompt, action, code })
+          });
+          
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Request failed');
+          return data;
+      } catch (error) {
+          console.error('Circuit design error', error);
+          throw error;
+      }
+  }
+}
+
 // ZK Quest API
 export interface CompileCircuitRequest {
   circuitCode: string;
@@ -212,11 +231,13 @@ export interface CompileCircuitResponse {
   artifacts: any;
   success?: boolean;
   error?: string;
+  errors?: string[];
 }
 
 export interface GenerateProofRequest {
   circuitName: string;
   inputs: Record<string, any>;
+  provingSystem?: 'groth16' | 'plonk' | 'fflonk';
 }
 
 export interface GenerateProofResponse {
@@ -225,6 +246,7 @@ export interface GenerateProofResponse {
   publicSignals: any[];
   success?: boolean;
   error?: string;
+  errors?: string[];
 }
 
 export interface VerifyProofRequest {
@@ -254,13 +276,18 @@ export class ZkAPI {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+        // Preserve all error data from the response
+        const error: any = new Error(data.error || `HTTP error! status: ${response.status}`);
+        error.errors = data.errors;
+        error.formattedErrors = data.formattedErrors;
+        error.warnings = data.warnings;
+        throw error;
       }
 
       return data;
     } catch (error) {
       console.error('Error compiling circuit:', error);
-      throw error instanceof Error ? error : new Error('Unknown error occurred');
+      throw error;
     }
   }
 
@@ -277,13 +304,17 @@ export class ZkAPI {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+        // Preserve all error data from the response
+        const error: any = new Error(data.error || `HTTP error! status: ${response.status}`);
+        error.errors = data.errors;
+        error.formattedErrors = data.formattedErrors;
+        throw error;
       }
 
       return data;
     } catch (error) {
       console.error('Error generating proof:', error);
-      throw error instanceof Error ? error : new Error('Unknown error occurred');
+      throw error;
     }
   }
 
@@ -300,13 +331,17 @@ export class ZkAPI {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || `HTTP error! status: ${response.status}`);
+        // Preserve all error data from the response
+        const error: any = new Error(data.error || `HTTP error! status: ${response.status}`);
+        error.errors = data.errors;
+        error.formattedErrors = data.formattedErrors;
+        throw error;
       }
 
       return data;
     } catch (error) {
       console.error('Error verifying proof:', error);
-      throw error instanceof Error ? error : new Error('Unknown error occurred');
+      throw error;
     }
   }
 

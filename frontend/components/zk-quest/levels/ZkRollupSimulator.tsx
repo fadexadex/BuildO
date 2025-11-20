@@ -6,9 +6,9 @@ import { useState, useRef, useEffect } from 'react';
 import { animated, useSpring } from '@react-spring/three';
 import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { useGameState } from '@/hooks/use-game-state';
 import { submitProofToHedera } from '@/lib/hedera-api';
+import { CollapsibleLevelCard } from '../CollapsibleLevelCard';
 
 // Animated components
 const AnimatedBox = animated(Box);
@@ -592,61 +592,62 @@ export default function ZkRollupSimulator() {
   };
 
   return (
-    <div className="w-full h-screen flex flex-col">
+    <div className="w-full h-screen flex flex-col relative">
       {/* Info Panel */}
-      <div className="absolute top-4 left-4 right-4 z-10 pointer-events-none">
-        <Card className="p-4 max-w-3xl mx-auto pointer-events-auto bg-black/80 backdrop-blur-sm border-purple-500/50">
-          <h2 className="text-2xl font-bold text-white mb-2">Level 9: zkRollup Simulator</h2>
-          <p className="text-gray-300 mb-4">
-            {gamePhase === 'intro' && "Experience how zkRollups scale blockchain! Watch transactions batch together, compress into a ZK proof, and submit to Hedera with a state root."}
-            {gamePhase === 'batching' && "Batching transactions together... This reduces the on-chain footprint!"}
-            {gamePhase === 'proving' && "Generating zero-knowledge proof for the batch... The circuit compresses all transactions into a single proof!"}
-            {gamePhase === 'submitting' && "Submitting proof and state root to Hedera network... Only this proof needs to go on-chain!"}
-            {gamePhase === 'success' && "✅ zkRollup complete! We processed 5 transactions but only submitted 1 proof to Hedera. That's 5x scaling!"}
-          </p>
+      <CollapsibleLevelCard 
+        levelId="zk-rollup" 
+        title="Level 9: zkRollup Simulator"
+        className="pointer-events-auto"
+      >
+        <p className="text-gray-300 mb-4 text-sm">
+          {gamePhase === 'intro' && "Experience how zkRollups scale blockchain! Watch transactions batch together, compress into a ZK proof, and submit to Hedera with a state root."}
+          {gamePhase === 'batching' && "Batching transactions together... This reduces the on-chain footprint!"}
+          {gamePhase === 'proving' && "Generating zero-knowledge proof for the batch... The circuit compresses all transactions into a single proof!"}
+          {gamePhase === 'submitting' && "Submitting proof and state root to Hedera network... Only this proof needs to go on-chain!"}
+          {gamePhase === 'success' && "✅ zkRollup complete! We processed 5 transactions but only submitted 1 proof to Hedera. That's 5x scaling!"}
+        </p>
 
-          <div className="grid grid-cols-4 gap-4 mb-4 text-sm">
-            <div className="bg-blue-900/30 p-2 rounded">
-              <div className="text-gray-400">Queue</div>
-              <div className="text-white text-xl font-bold">{transactions.length}</div>
-            </div>
-            <div className="bg-purple-900/30 p-2 rounded">
-              <div className="text-gray-400">Batched</div>
-              <div className="text-white text-xl font-bold">{batchSize}</div>
-            </div>
-            <div className="bg-green-900/30 p-2 rounded">
-              <div className="text-gray-400">Proof</div>
-              <div className="text-white text-xl font-bold">
-                {isGeneratingProof ? '...' : showStateRoot ? '✓' : '-'}
-              </div>
-            </div>
-            <div className="bg-yellow-900/30 p-2 rounded">
-              <div className="text-gray-400">Hedera</div>
-              <div className="text-white text-xl font-bold">
-                {gamePhase === 'success' ? '✓' : isSubmittingToHedera ? '...' : '-'}
-              </div>
+        <div className="grid grid-cols-2 gap-2 mb-4 text-xs text-white sm:grid-cols-4">
+          <div className="bg-blue-900/30 p-2 rounded">
+            <div className="text-gray-400 text-[11px] uppercase tracking-wide">Queue</div>
+            <div className="text-xl font-bold">{transactions.length}</div>
+          </div>
+          <div className="bg-purple-900/30 p-2 rounded">
+            <div className="text-gray-400 text-[11px] uppercase tracking-wide">Batched</div>
+            <div className="text-xl font-bold">{batchSize}</div>
+          </div>
+          <div className="bg-green-900/30 p-2 rounded">
+            <div className="text-gray-400 text-[11px] uppercase tracking-wide">Proof</div>
+            <div className="text-xl font-bold">
+              {isGeneratingProof ? '...' : showStateRoot ? '✓' : '-'}
             </div>
           </div>
+          <div className="bg-yellow-900/30 p-2 rounded">
+            <div className="text-gray-400 text-[11px] uppercase tracking-wide">Hedera</div>
+            <div className="text-xl font-bold">
+              {gamePhase === 'success' ? '✓' : isSubmittingToHedera ? '...' : '-'}
+            </div>
+          </div>
+        </div>
 
-          <div className="flex gap-2">
-            {gamePhase === 'intro' && (
-              <Button onClick={startRollup} className="bg-purple-600 hover:bg-purple-700">
-                Start zkRollup
+        <div className="flex flex-wrap gap-2">
+          {gamePhase === 'intro' && (
+            <Button onClick={startRollup} className="bg-purple-600 hover:bg-purple-700 flex-1">
+              Start zkRollup
+            </Button>
+          )}
+          {gamePhase === 'success' && (
+            <>
+              <Button onClick={resetLevel} className="bg-purple-600 hover:bg-purple-700 flex-1">
+                Run Again
               </Button>
-            )}
-            {gamePhase === 'success' && (
-              <>
-                <Button onClick={resetLevel} className="bg-purple-600 hover:bg-purple-700">
-                  Run Again
-                </Button>
-                <Button onClick={() => window.history.back()} className="bg-gray-600 hover:bg-gray-700">
-                  Back to Map
-                </Button>
-              </>
-            )}
-          </div>
-        </Card>
-      </div>
+              <Button onClick={() => window.history.back()} className="bg-gray-600 hover:bg-gray-700 flex-1">
+                Back to Map
+              </Button>
+            </>
+          )}
+        </div>
+      </CollapsibleLevelCard>
 
       {/* 3D Canvas */}
       <div className="flex-1">

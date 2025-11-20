@@ -6,11 +6,11 @@ import { useState, useRef, useEffect } from 'react';
 import { animated, useSpring } from '@react-spring/three';
 import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useGameState } from '@/hooks/use-game-state';
 import { submitProofToHedera } from '@/lib/hedera-api';
 import { ArrowRight } from 'lucide-react';
+import { CollapsibleLevelCard } from '../CollapsibleLevelCard';
 
 // Animated components
 const AnimatedBox = animated(Box);
@@ -366,77 +366,78 @@ export default function PrivateTransfer() {
   };
 
   return (
-    <div className="w-full h-screen flex flex-col">
+    <div className="w-full h-screen flex flex-col relative">
       {/* Info Panel */}
-      <div className="absolute top-4 left-4 right-4 z-10 pointer-events-none">
-        <Card className="p-4 max-w-3xl mx-auto pointer-events-auto bg-black/80 backdrop-blur-sm border-purple-500/50">
-          <h2 className="text-2xl font-bold text-white mb-2">Level 7: Private Token Transfer</h2>
-          <p className="text-gray-300 mb-4">
-            {gamePhase === 'intro' && "Transfer tokens between wallets without revealing the balance! Use zero-knowledge proofs to verify sufficient funds while keeping balances private."}
-            {gamePhase === 'setup' && "Enter the amount to transfer. The ZK proof will verify you have enough balance without revealing the actual amount."}
-            {gamePhase === 'transfer' && "Generating zero-knowledge proof and transferring tokens..."}
-            {gamePhase === 'verify' && "Verifying the proof... The balances remain hidden!"}
-            {gamePhase === 'success' && "✅ Transfer complete! The receiver got the tokens, but both balances stayed private throughout the transaction!"}
-          </p>
+      <CollapsibleLevelCard 
+        levelId="private-transfer" 
+        title="Level 7: Private Token Transfer"
+        className="pointer-events-auto"
+      >
+        <p className="text-gray-300 mb-4 text-sm">
+          {gamePhase === 'intro' && "Transfer tokens between wallets without revealing the balance! Use zero-knowledge proofs to verify sufficient funds while keeping balances private."}
+          {gamePhase === 'setup' && "Enter the amount to transfer. The ZK proof will verify you have enough balance without revealing the actual amount."}
+          {gamePhase === 'transfer' && "Generating zero-knowledge proof and transferring tokens..."}
+          {gamePhase === 'verify' && "Verifying the proof... The balances remain hidden!"}
+          {gamePhase === 'success' && "✅ Transfer complete! The receiver got the tokens, but both balances stayed private throughout the transaction!"}
+        </p>
 
-          {(gamePhase === 'intro' || gamePhase === 'setup') && (
-            <div className="space-y-3 mb-4">
-              <div className="flex items-center gap-3">
-                <label className="text-white min-w-[120px]">Transfer Amount:</label>
-                <Input
-                  type="number"
-                  value={transferAmount}
-                  onChange={(e) => setTransferAmount(Number(e.target.value))}
-                  min={1}
-                  max={senderBalance}
-                  className="bg-gray-800 border-purple-500/50 text-white"
-                />
-              </div>
-              <div className="text-sm text-gray-400">
-                • Sender Balance: {showBalances ? `${senderBalance} tokens` : '???'}
-                <br />
-                • Receiver Balance: {showBalances ? `${receiverBalance} tokens` : '???'}
-              </div>
+        {(gamePhase === 'intro' || gamePhase === 'setup') && (
+          <div className="space-y-3 mb-4 text-sm">
+            <div className="flex items-center gap-3">
+              <label className="text-white min-w-[120px]">Transfer Amount:</label>
+              <Input
+                type="number"
+                value={transferAmount}
+                onChange={(e) => setTransferAmount(Number(e.target.value))}
+                min={1}
+                max={senderBalance}
+                className="bg-gray-800 border-purple-500/50 text-white"
+              />
             </div>
-          )}
-
-          <div className="flex gap-2">
-            {gamePhase === 'intro' && (
-              <Button onClick={() => setGamePhase('setup')} className="bg-purple-600 hover:bg-purple-700">
-                Start Level
-              </Button>
-            )}
-            {gamePhase === 'setup' && (
-              <Button onClick={startTransfer} className="bg-green-600 hover:bg-green-700">
-                Transfer with ZK Proof
-              </Button>
-            )}
-            {gamePhase === 'verify' && (
-              <Button onClick={verifyTransfer} className="bg-blue-600 hover:bg-blue-700">
-                Verify Proof
-              </Button>
-            )}
-            {gamePhase === 'success' && (
-              <>
-                <Button onClick={resetLevel} className="bg-purple-600 hover:bg-purple-700">
-                  Try Again
-                </Button>
-                <Button onClick={returnToMap} variant="outline" className="bg-gray-600 hover:bg-gray-700">
-                  Back to Map
-                </Button>
-                {nextLevel && (
-                  <Button 
-                    onClick={() => navigateToLevel(nextLevel.world, nextLevel.id)} 
-                    className="bg-green-600 hover:bg-green-700"
-                  >
-                    Next Level <ArrowRight className="ml-2 w-4 h-4" />
-                  </Button>
-                )}
-              </>
-            )}
+            <div className="text-gray-400">
+              • Sender Balance: {showBalances ? `${senderBalance} tokens` : '???'}
+              <br />
+              • Receiver Balance: {showBalances ? `${receiverBalance} tokens` : '???'}
+            </div>
           </div>
-        </Card>
-      </div>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          {gamePhase === 'intro' && (
+            <Button onClick={() => setGamePhase('setup')} className="bg-purple-600 hover:bg-purple-700 flex-1">
+              Start Level
+            </Button>
+          )}
+          {gamePhase === 'setup' && (
+            <Button onClick={startTransfer} className="bg-green-600 hover:bg-green-700 flex-1">
+              Transfer with ZK Proof
+            </Button>
+          )}
+          {gamePhase === 'verify' && (
+            <Button onClick={verifyTransfer} className="bg-blue-600 hover:bg-blue-700 flex-1">
+              Verify Proof
+            </Button>
+          )}
+          {gamePhase === 'success' && (
+            <>
+              <Button onClick={resetLevel} className="bg-purple-600 hover:bg-purple-700 flex-1">
+                Try Again
+              </Button>
+              <Button onClick={returnToMap} variant="outline" className="flex-1 text-white border-gray-600 bg-gray-700/60 hover:bg-gray-700">
+                Back to Map
+              </Button>
+              {nextLevel && (
+                <Button 
+                  onClick={() => navigateToLevel(nextLevel.world, nextLevel.id)} 
+                  className="bg-green-600 hover:bg-green-700 flex-1"
+                >
+                  Next Level <ArrowRight className="ml-2 w-4 h-4" />
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      </CollapsibleLevelCard>
 
       {/* 3D Canvas */}
       <div className="flex-1">

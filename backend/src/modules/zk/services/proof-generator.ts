@@ -41,12 +41,35 @@ export class ProofGeneratorService {
   private witnessDir: string;
   private zkeyDir: string;
   private ptauPath: string;
+  private ptauDir: string;
 
   constructor(workDir?: string) {
     this.workDir = workDir || path.join(process.cwd(), 'zk-workspace');
     this.witnessDir = path.join(this.workDir, 'witness');
     this.zkeyDir = path.join(this.workDir, 'zkeys');
-    this.ptauPath = path.join(this.workDir, 'ptau', 'powersOfTau28_hez_final_10.ptau');
+    this.ptauDir = path.join(this.workDir, 'ptau');
+    
+    // Try to find any available ptau file (prefer larger ones)
+    const ptauFiles = [
+      'powersOfTau28_hez_final_15.ptau',  // 2^15 - 32k constraints
+      'powersOfTau28_hez_final_12.ptau',  // 2^12 - 4k constraints
+      'powersOfTau28_hez_final_10.ptau',  // 2^10 - 1k constraints
+    ];
+    
+    this.ptauPath = '';
+    for (const ptauFile of ptauFiles) {
+      const testPath = path.join(this.ptauDir, ptauFile);
+      if (existsSync(testPath)) {
+        this.ptauPath = testPath;
+        console.log(`Using Powers of Tau file: ${path.basename(testPath)}`);
+        break;
+      }
+    }
+    
+    // Fallback to default if none found
+    if (!this.ptauPath) {
+      this.ptauPath = path.join(this.ptauDir, 'powersOfTau28_hez_final_10.ptau');
+    }
   }
 
   /**
@@ -74,17 +97,96 @@ export class ProofGeneratorService {
    * Download powers of tau ceremony file (for small circuits)
    */
   private async downloadPowersOfTau(): Promise<void> {
-    console.log('Downloading powers of tau file...');
+    console.log('Powers of Tau file not found. Attempting download...');
+    
     try {
-      // For production, download from: https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_10.ptau
-      // For now, we'll use a smaller one or expect it to be provided
-      console.warn('Powers of tau file not found. Please download it manually from:');
-      console.warn('https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_10.ptau');
-      console.warn(`And place it at: ${this.ptauPath}`);
+      const https = await import('https');
+      const PTAU_URL = 'https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_10.ptau';
+      
+      console.log(`Downloading from: ${PTAU_URL}`);
+      console.log(`Target location: ${this.ptauPath}`);
+      console.log('This may take a few minutes (file size: ~16 MB)...');
+      
+      await this.downloadFileWithProgress(PTAU_URL, this.ptauPath);
+      
+      console.log('✓ Powers of Tau file downloaded successfully!');
     } catch (error) {
-      console.error('Error downloading powers of tau:', error);
-      throw error;
+      console.error('Failed to download Powers of Tau file automatically.');
+      console.error('Please download it manually using:');
+      console.error('  npm run setup:ptau');
+      console.error('');
+      console.error('Or manually download from:');
+      console.error('  https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_10.ptau');
+      console.error(`And place it at: ${this.ptauPath}`);
+      throw new Error('Powers of tau file is required for proof generation');
     }
+  }
+
+  /**
+   * Download file with progress tracking
+   */
+  private async downloadFileWithProgress(url: string, destination: string): Promise<void> {
+    return new Promise(async (resolve, reject) => {
+      const https = await import('https');
+      const fsSync = await import('fs');
+      
+      const file = fsSync.createWriteStream(destination);
+      
+      https.get(url, (response) => {
+        // Follow redirects
+        if (response.statusCode === 302 || response.statusCode === 301) {
+          file.close();
+          fsSync.unlinkSync(destination);
+          return this.downloadFileWithProgress(response.headers.location!, destination)
+            .then(resolve)
+            .catch(reject);
+        }
+
+        if (response.statusCode !== 200) {
+          file.close();
+          if (existsSync(destination)) {
+            fsSync.unlinkSync(destination);
+          }
+          reject(new Error(`Failed to download: HTTP ${response.statusCode}`));
+          return;
+        }
+
+        const totalBytes = parseInt(response.headers['content-length'] || '0', 10);
+        let downloadedBytes = 0;
+        let lastPercent = 0;
+
+        response.on('data', (chunk) => {
+          downloadedBytes += chunk.length;
+          const percent = Math.floor((downloadedBytes / totalBytes) * 100);
+          
+          if (percent !== lastPercent && percent % 10 === 0) {
+            console.log(`Download progress: ${percent}%`);
+            lastPercent = percent;
+          }
+        });
+
+        response.pipe(file);
+
+        file.on('finish', () => {
+          file.close();
+          resolve();
+        });
+
+        file.on('error', (err) => {
+          file.close();
+          if (existsSync(destination)) {
+            fsSync.unlinkSync(destination);
+          }
+          reject(err);
+        });
+      }).on('error', (err) => {
+        file.close();
+        if (existsSync(destination)) {
+          fsSync.unlinkSync(destination);
+        }
+        reject(err);
+      });
+    });
   }
 
   /**
@@ -144,7 +246,19 @@ export class ProofGeneratorService {
       await this.initialize();
 
       if (!existsSync(this.ptauPath)) {
-        throw new Error('Powers of tau file not found. Please download it first.');
+        const errorMsg = [
+          'Powers of Tau file not found.',
+          '',
+          'Please run one of these commands:',
+          '  npm run setup:ptau    (for circuits with up to 1,024 constraints)',
+          '  npm run setup:ptau15  (for circuits with up to 32,768 constraints)',
+          '',
+          `Expected location: ${this.ptauPath}`,
+          '',
+          'Or download manually from:',
+          '  https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_10.ptau',
+        ].join('\n');
+        throw new Error(errorMsg);
       }
 
       const zkeyPath = path.join(this.zkeyDir, `${circuitName}_final.zkey`);

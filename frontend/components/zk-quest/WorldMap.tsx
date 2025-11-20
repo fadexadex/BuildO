@@ -12,6 +12,7 @@ import { Lock, CheckCircle2, Play, Clock, Target } from "lucide-react";
 import { Suspense, useRef, useState, useEffect, useMemo, useCallback } from "react";
 import * as THREE from "three";
 import { useRouter } from "next/navigation";
+import { levelNarratives } from "@/data/level-narratives";
 
 interface LevelMarkerProps {
   position: [number, number, number];
@@ -277,6 +278,11 @@ export function WorldMap() {
     ? gameState.levels.find((l) => l.id === selectedLevel)
     : null;
 
+  // Get narrative data for selected level
+  const narrative = selectedLevelData 
+    ? Object.values(levelNarratives).find(n => n.id === selectedLevelData.id.toString() || (selectedLevelData.id === 1 && n.id === "color-game") || (selectedLevelData.id === 8 && n.id === "anonymous-voting"))
+    : null;
+
   return (
     <div className="relative h-full">
       {/* 3D World Map */}
@@ -314,6 +320,11 @@ export function WorldMap() {
               <CardTitle className="text-white">
                 {selectedLevelData.name}
               </CardTitle>
+              {narrative && (
+                <div className="text-xs font-mono text-cyan-400 mb-1">
+                  {narrative.subtitle}
+                </div>
+              )}
               <CardDescription className="text-slate-300">
                 {selectedLevelData.description}
               </CardDescription>

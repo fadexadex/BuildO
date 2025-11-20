@@ -9,7 +9,8 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Play, CheckCircle, XCircle, Info } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Loader2, Play, CheckCircle, XCircle, Info, Terminal, AlertTriangle } from 'lucide-react';
 import * as THREE from 'three';
 
 // Dynamically import Monaco to avoid SSR issues
@@ -200,12 +201,33 @@ export default function CircuitEditor({
   const [verified, setVerified] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [monacoLoaded, setMonacoLoaded] = useState(false);
+  const [consoleLogs, setConsoleLogs] = useState<Array<{ type: 'info' | 'error' | 'success' | 'warning'; message: string; timestamp: Date }>>([]);
+  const [activeTab, setActiveTab] = useState<'visualization' | 'console'>('visualization');
+  const [inputsValid, setInputsValid] = useState(false);
   
   // 3D Visualization state
   const [nodes, setNodes] = useState<CircuitNode[]>([]);
   const [edges, setEdges] = useState<CircuitEdge[]>([]);
   const [isAnimating, setIsAnimating] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
+
+  // Console logging helper
+  const addConsoleLog = (type: 'info' | 'error' | 'success' | 'warning', message: string) => {
+    setConsoleLogs(prev => [...prev, { type, message, timestamp: new Date() }]);
+    if (type === 'error' || type === 'warning') {
+      setActiveTab('console');
+    }
+  };
+
+  // Validate inputs
+  useEffect(() => {
+    if (templateInputs.length === 0) {
+      setInputsValid(true);
+      return;
+    }
+    const allFilled = templateInputs.every(input => inputs[input.name] && inputs[input.name].trim() !== '');
+    setInputsValid(allFilled);
+  }, [inputs, templateInputs]);
 
   // Register Circom language when Monaco loads
   const handleEditorDidMount = (editor: any, monaco: any) => {
@@ -317,14 +339,30 @@ export default function CircuitEditor({
     setCompiling(true);
     setError(null);
     setCompiled(false);
+    addConsoleLog('info', '🔨 Starting compilation...');
     
     try {
       await onCompile(code);
       setCompiled(true);
       setIsAnimating(true);
       setTimeout(() => setIsAnimating(false), 2000);
+      addConsoleLog('success', '✅ Compilation successful!');
     } catch (err: any) {
-      setError(err.message || 'Compilation failed');
+      const errorMsg = err.message || 'Compilation failed';
+      setError(errorMsg);
+      
+      // Use formatted errors if available, otherwise fall back to raw errors
+      if (err.formattedErrors) {
+        addConsoleLog('error', '❌ Compilation failed:\n');
+        addConsoleLog('error', err.formattedErrors);
+      } else if (err.errors && Array.isArray(err.errors)) {
+        addConsoleLog('error', '❌ Compilation failed with errors:');
+        err.errors.forEach((error: string) => {
+          addConsoleLog('error', error);
+        });
+      } else {
+        addConsoleLog('error', `❌ ${errorMsg}`);
+      }
     } finally {
       setCompiling(false);
     }
@@ -333,9 +371,17 @@ export default function CircuitEditor({
   const handleGenerateProof = async () => {
     if (!onGenerateProof || !compiled) return;
     
+    // Validate inputs first
+    if (!inputsValid) {
+      setError('Please fill in all input fields');
+      addConsoleLog('warning', '⚠️ Please fill in all required input fields before generating proof');
+      return;
+    }
+    
     setGenerating(true);
     setError(null);
     setVerified(null);
+    addConsoleLog('info', '🔐 Generating zero-knowledge proof...');
     
     // Animate data flow through circuit
     setEdges(prev => prev.map(edge => ({ ...edge, active: true })));
@@ -345,6 +391,8 @@ export default function CircuitEditor({
       Object.entries(inputs).forEach(([key, value]) => {
         parsedInputs[key] = parseInt(value) || value;
       });
+      
+      addConsoleLog('info', `📊 Inputs: ${JSON.stringify(parsedInputs, null, 2)}`);
       
       const result = await onGenerateProof(parsedInputs);
       setProof(result);
@@ -357,11 +405,28 @@ export default function CircuitEditor({
         return node;
       }));
       
+      addConsoleLog('success', '✅ Proof generated successfully!');
+      
       setTimeout(() => {
         setEdges(prev => prev.map(edge => ({ ...edge, active: false })));
       }, 3000);
     } catch (err: any) {
-      setError(err.message || 'Proof generation failed');
+      const errorMsg = err.message || 'Proof generation failed';
+      setError(errorMsg);
+      
+      // Use formatted errors if available, otherwise fall back to raw errors
+      if (err.formattedErrors) {
+        addConsoleLog('error', '❌ Proof generation failed:\n');
+        addConsoleLog('error', err.formattedErrors);
+      } else if (err.errors && Array.isArray(err.errors)) {
+        addConsoleLog('error', '❌ Proof generation failed with errors:');
+        err.errors.forEach((error: string) => {
+          addConsoleLog('error', error);
+        });
+      } else {
+        addConsoleLog('error', `❌ ${errorMsg}`);
+      }
+      
       setEdges(prev => prev.map(edge => ({ ...edge, active: false })));
     } finally {
       setGenerating(false);
@@ -373,13 +438,34 @@ export default function CircuitEditor({
     
     setVerifying(true);
     setError(null);
+    addConsoleLog('info', '🔍 Verifying proof...');
     
     try {
       const result = await onVerifyProof(proof);
       setVerified(result);
+      
+      if (result) {
+        addConsoleLog('success', '✅ Proof verified successfully! The computation is correct.');
+      } else {
+        addConsoleLog('error', '❌ Proof verification failed. The proof is invalid.');
+      }
     } catch (err: any) {
-      setError(err.message || 'Verification failed');
+      const errorMsg = err.message || 'Verification failed';
+      setError(errorMsg);
       setVerified(false);
+      
+      // Use formatted errors if available, otherwise fall back to raw errors
+      if (err.formattedErrors) {
+        addConsoleLog('error', '❌ Verification failed:\n');
+        addConsoleLog('error', err.formattedErrors);
+      } else if (err.errors && Array.isArray(err.errors)) {
+        addConsoleLog('error', '❌ Verification failed with errors:');
+        err.errors.forEach((error: string) => {
+          addConsoleLog('error', error);
+        });
+      } else {
+        addConsoleLog('error', `❌ ${errorMsg}`);
+      }
     } finally {
       setVerifying(false);
     }
@@ -430,28 +516,53 @@ export default function CircuitEditor({
 
         {/* Inputs Section */}
         {templateInputs.length > 0 && (
-          <div className="mt-4 space-y-2">
-            <h4 className="font-semibold">Witness Inputs</h4>
-            {templateInputs.map((input) => (
-              <div key={input.name} className="flex items-center gap-2">
-                <Label htmlFor={input.name} className="w-32">
-                  {input.name}
-                </Label>
-                <Input
-                  id={input.name}
-                  type={input.type}
-                  placeholder={input.description || input.name}
-                  value={inputs[input.name] || ''}
-                  onChange={(e) => setInputs({ ...inputs, [input.name]: e.target.value })}
-                  disabled={!compiled}
-                />
-              </div>
-            ))}
+          <Card className="mt-4 p-4 border-2 border-dashed border-blue-500/50 bg-blue-500/5">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="w-5 h-5 text-blue-500" />
+              <h4 className="font-semibold text-blue-500">Required Inputs for Proof Generation</h4>
+            </div>
+            <div className="space-y-2">
+              {templateInputs.map((input) => {
+                const isFilled = inputs[input.name] && inputs[input.name].trim() !== '';
+                return (
+                  <div key={input.name} className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <Label htmlFor={input.name} className="text-sm mb-1 flex items-center gap-1">
+                        {input.name}
+                        {isFilled ? (
+                          <CheckCircle className="w-3 h-3 text-green-500" />
+                        ) : (
+                          <XCircle className="w-3 h-3 text-red-500/50" />
+                        )}
+                      </Label>
+                      <Input
+                        id={input.name}
+                        type={input.type}
+                        placeholder={input.description || input.name}
+                        value={inputs[input.name] || ''}
+                        onChange={(e) => setInputs({ ...inputs, [input.name]: e.target.value })}
+                        disabled={!compiled}
+                        className={isFilled ? 'border-green-500/50' : !compiled ? '' : 'border-red-500/50'}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
             
-            <div className="flex gap-2 pt-2">
+            {!inputsValid && compiled && (
+              <Alert variant="destructive" className="mt-3">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription className="text-sm">
+                  Please fill in all required inputs before generating a proof.
+                </AlertDescription>
+              </Alert>
+            )}
+            
+            <div className="flex gap-2 pt-3 mt-3 border-t">
               <Button
                 onClick={handleGenerateProof}
-                disabled={!compiled || generating}
+                disabled={!compiled || generating || !inputsValid}
                 className="flex-1"
               >
                 {generating ? (
@@ -496,7 +607,7 @@ export default function CircuitEditor({
                 </Button>
               )}
             </div>
-          </div>
+          </Card>
         )}
 
         {error && (
@@ -507,34 +618,87 @@ export default function CircuitEditor({
         )}
       </Card>
 
-      {/* 3D Visualization Panel */}
+      {/* Visualization & Console Panel */}
       {showVisualization && (
         <Card className="flex-1 p-4 flex flex-col">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold">Circuit Visualization</h3>
-            <Info className="w-5 h-5 text-muted-foreground" />
-          </div>
-          
-          <div className="flex-1 border rounded-lg overflow-hidden bg-slate-900">
-            <Canvas camera={{ position: [0, 0, 8], fov: 50 }}>
-              <Suspense fallback={null}>
-                <CircuitVisualization3D
-                  nodes={nodes}
-                  edges={edges}
-                  isAnimating={isAnimating}
-                  selectedNode={selectedNode}
-                  onNodeClick={setSelectedNode}
-                />
-              </Suspense>
-            </Canvas>
-          </div>
-          
-          <div className="mt-4 text-sm text-muted-foreground">
-            <p><span className="text-purple-400">●</span> Inputs</p>
-            <p><span className="text-orange-400">●</span> Gates/Constraints</p>
-            <p><span className="text-red-400">●</span> Outputs</p>
-            <p className="mt-2 text-xs">Click and drag to rotate • Scroll to zoom</p>
-          </div>
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'visualization' | 'console')} className="flex flex-col h-full">
+            <TabsList className="mb-4">
+              <TabsTrigger value="visualization" className="flex items-center gap-2">
+                <Info className="w-4 h-4" />
+                Visualization
+              </TabsTrigger>
+              <TabsTrigger value="console" className="flex items-center gap-2">
+                <Terminal className="w-4 h-4" />
+                Console
+                {consoleLogs.some(log => log.type === 'error') && (
+                  <span className="ml-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                )}
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="visualization" className="flex-1 flex flex-col mt-0">
+              <div className="flex-1 border rounded-lg overflow-hidden bg-slate-900">
+                <Canvas camera={{ position: [0, 0, 8], fov: 50 }}>
+                  <Suspense fallback={null}>
+                    <CircuitVisualization3D
+                      nodes={nodes}
+                      edges={edges}
+                      isAnimating={isAnimating}
+                      selectedNode={selectedNode}
+                      onNodeClick={setSelectedNode}
+                    />
+                  </Suspense>
+                </Canvas>
+              </div>
+              
+              <div className="mt-4 text-sm text-muted-foreground">
+                <p><span className="text-purple-400">●</span> Inputs</p>
+                <p><span className="text-orange-400">●</span> Gates/Constraints</p>
+                <p><span className="text-red-400">●</span> Outputs</p>
+                <p className="mt-2 text-xs">Click and drag to rotate • Scroll to zoom</p>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="console" className="flex-1 flex flex-col mt-0">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-muted-foreground">Output Console</h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConsoleLogs([])}
+                  className="text-xs"
+                >
+                  Clear
+                </Button>
+              </div>
+              <div className="flex-1 border rounded-lg overflow-auto bg-slate-950 p-4 font-mono text-xs">
+                {consoleLogs.length === 0 ? (
+                  <div className="text-muted-foreground text-center py-8">
+                    No console output yet. Compile your circuit to see logs.
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {consoleLogs.map((log, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex gap-2 ${
+                          log.type === 'error' ? 'text-red-400' :
+                          log.type === 'warning' ? 'text-yellow-400' :
+                          log.type === 'success' ? 'text-green-400' :
+                          'text-slate-300'
+                        }`}
+                      >
+                        <span className="text-slate-500 select-none">
+                          {log.timestamp.toLocaleTimeString()}
+                        </span>
+                        <span className="whitespace-pre-wrap flex-1">{log.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
         </Card>
       )}
     </div>

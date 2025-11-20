@@ -5,7 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": " npx tsx src/server.ts",
-    "start": " npx tsx src/server.ts"
+    "start": " npx tsx src/server.ts",
+    "setup:circom": "node scripts/setup-circom.cjs",
+    "setup:ptau": "node scripts/download-ptau.cjs",
+    "setup:ptau15": "node scripts/download-ptau-15.cjs",
+    "setup": "npm run setup:circom && npm run setup:ptau",
+    "postinstall": "npm run setup:circom",
+    "build": "npm run setup:circom"
   },
   "keywords": [],
   "author": "",

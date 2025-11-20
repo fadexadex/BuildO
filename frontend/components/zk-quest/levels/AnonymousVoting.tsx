@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from 'react';
 import { animated, useSpring } from '@react-spring/three';
 import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { CollapsibleLevelCard } from '../CollapsibleLevelCard';
 import { useGameState } from '@/hooks/use-game-state';
 import { submitProofToHedera } from '@/lib/hedera-api';
 import { ArrowRight } from 'lucide-react';
@@ -586,12 +586,14 @@ export default function AnonymousVoting() {
   };
 
   return (
-    <div className="w-full h-screen flex flex-col">
+    <div className="w-full h-screen flex flex-col relative">
       {/* Info Panel */}
-      <div className="absolute top-4 left-4 right-4 z-10 pointer-events-none">
-        <Card className="p-4 max-w-3xl mx-auto pointer-events-auto bg-black/80 backdrop-blur-sm border-purple-500/50">
-          <h2 className="text-2xl font-bold text-white mb-2">Level 8: Anonymous Voting</h2>
-          <p className="text-gray-300 mb-4">
+      <CollapsibleLevelCard 
+        levelId="anonymous-voting" 
+        title="Level 8: Anonymous Voting"
+        className="pointer-events-auto"
+      >
+          <p className="text-gray-300 mb-4 text-sm">
             {gamePhase === 'intro' && "Watch anonymous voters cast encrypted votes! Zero-knowledge proofs verify eligibility without revealing identity. The tally is public, but voter privacy is protected."}
             {gamePhase === 'voting' && "Voters are casting encrypted votes in the private booth. Their identity remains hidden throughout the process."}
             {gamePhase === 'tallying' && "Tallying votes using ZK proofs to verify eligibility..."}
@@ -599,18 +601,18 @@ export default function AnonymousVoting() {
             {gamePhase === 'success' && "✅ Anonymous voting complete! Zero-knowledge proofs preserved voter privacy while ensuring vote integrity!"}
           </p>
 
-          <div className="grid grid-cols-3 gap-4 mb-4 text-sm">
+          <div className="grid grid-cols-3 gap-2 mb-4 text-xs">
             <div className="bg-blue-900/30 p-2 rounded">
               <div className="text-gray-400">Total Voters</div>
-              <div className="text-white text-xl font-bold">{voters.length}</div>
+              <div className="text-white text-lg font-bold">{voters.length}</div>
             </div>
             <div className="bg-purple-900/30 p-2 rounded">
               <div className="text-gray-400">Votes Cast</div>
-              <div className="text-white text-xl font-bold">{ballotBoxVotes}</div>
+              <div className="text-white text-lg font-bold">{ballotBoxVotes}</div>
             </div>
             <div className="bg-green-900/30 p-2 rounded">
               <div className="text-gray-400">Status</div>
-              <div className="text-white text-xl font-bold">
+              <div className="text-white text-lg font-bold">
                 {gamePhase === 'intro' && 'Ready'}
                 {gamePhase === 'voting' && 'Voting...'}
                 {gamePhase === 'tallying' && 'Tallying...'}
@@ -619,24 +621,21 @@ export default function AnonymousVoting() {
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {gamePhase === 'intro' && (
-              <Button onClick={startVoting} className="bg-purple-600 hover:bg-purple-700">
+              <Button onClick={startVoting} className="bg-purple-600 hover:bg-purple-700 w-full">
                 Start Anonymous Voting
               </Button>
             )}
             {gamePhase === 'success' && (
               <>
-                <Button onClick={resetLevel} className="bg-purple-600 hover:bg-purple-700">
+                <Button onClick={resetLevel} className="bg-purple-600 hover:bg-purple-700 flex-1">
                   Vote Again
-                </Button>
-                <Button onClick={returnToMap} className="bg-gray-600 hover:bg-gray-700">
-                  Back to Map
                 </Button>
                 {nextLevel && (
                   <Button 
                     onClick={() => navigateToLevel(nextLevel.world, nextLevel.id)} 
-                    className="bg-green-600 hover:bg-green-700"
+                    className="bg-green-600 hover:bg-green-700 flex-1"
                   >
                     Next Level <ArrowRight className="ml-2 w-4 h-4" />
                   </Button>
@@ -644,8 +643,7 @@ export default function AnonymousVoting() {
               </>
             )}
           </div>
-        </Card>
-      </div>
+      </CollapsibleLevelCard>
 
       {/* 3D Canvas */}
       <div className="flex-1">

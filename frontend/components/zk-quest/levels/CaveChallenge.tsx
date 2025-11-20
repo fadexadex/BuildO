@@ -6,10 +6,10 @@ import { useState, useRef, useEffect } from 'react';
 import { animated, useSpring } from '@react-spring/three';
 import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { useGameState } from '@/hooks/use-game-state';
 import { submitProofToHedera } from '@/lib/hedera-api';
 import { ArrowRight } from 'lucide-react';
+import { CollapsibleLevelCard } from '../CollapsibleLevelCard';
 
 // Animated components
 const AnimatedSphere = animated(Sphere);
@@ -434,56 +434,57 @@ export default function CaveChallenge() {
   };
 
   return (
-    <div className="w-full h-screen flex flex-col">
+    <div className="w-full h-screen flex flex-col relative">
       {/* Info Panel */}
-      <div className="absolute top-4 left-4 right-4 z-10 pointer-events-none">
-        <Card className="p-4 max-w-2xl mx-auto pointer-events-auto bg-black/80 backdrop-blur-sm border-purple-500/50">
-          <h2 className="text-2xl font-bold text-white mb-2">Level 2: Cave Challenge</h2>
-          <p className="text-gray-300 mb-4">
-            {gamePhase === 'intro' && "You enter a dark cave with two paths. One leads to treasure, one to danger. Can you prove you made a decision without revealing which path you chose?"}
-            {gamePhase === 'choose' && "Choose your path wisely. In ZK proofs, you can prove you made a valid choice without revealing which option you selected."}
-            {gamePhase === 'moving' && "Following your chosen path..."}
-            {gamePhase === 'result' && (
-              selectedPath === correctPath 
-                ? "Success! You proved your decision was valid without revealing it upfront! 🎉"
-                : "You chose the other path! But you still proved you made a valid decision. Try again to find the treasure!"
-            )}
-          </p>
+      <CollapsibleLevelCard 
+        levelId="cave-challenge" 
+        title="Level 2: Cave Challenge"
+        className="pointer-events-auto"
+      >
+        <p className="text-gray-300 mb-4 text-sm">
+          {gamePhase === 'intro' && "You enter a dark cave with two paths. One leads to treasure, one to danger. Can you prove you made a decision without revealing which path you chose?"}
+          {gamePhase === 'choose' && "Choose your path wisely. In ZK proofs, you can prove you made a valid choice without revealing which option you selected."}
+          {gamePhase === 'moving' && "Following your chosen path..."}
+          {gamePhase === 'result' && (
+            selectedPath === correctPath 
+              ? "Success! You proved your decision was valid without revealing it upfront! 🎉"
+              : "You chose the other path! But you still proved you made a valid decision. Try again to find the treasure!"
+          )}
+        </p>
 
-          <div className="flex gap-2">
-            {gamePhase === 'intro' && (
-              <Button onClick={startGame} className="bg-purple-600 hover:bg-purple-700">
-                Enter Cave
+        <div className="flex flex-wrap gap-2">
+          {gamePhase === 'intro' && (
+            <Button onClick={startGame} className="bg-purple-600 hover:bg-purple-700 flex-1">
+              Enter Cave
+            </Button>
+          )}
+          {gamePhase === 'choose' && (
+            <>
+              <Button onClick={() => choosePath('left')} className="bg-blue-600 hover:bg-blue-700 flex-1">
+                Choose Left Path
               </Button>
-            )}
-            {gamePhase === 'choose' && (
-              <>
-                <Button onClick={() => choosePath('left')} className="bg-blue-600 hover:bg-blue-700">
-                  Choose Left Path
+              <Button onClick={() => choosePath('right')} className="bg-red-600 hover:bg-red-700 flex-1">
+                Choose Right Path
+              </Button>
+            </>
+          )}
+          {gamePhase === 'result' && (
+            <>
+              <Button onClick={resetGame} className="bg-green-600 hover:bg-green-700 flex-1">
+                Try Again
+              </Button>
+              {selectedPath === correctPath && nextLevel && (
+                <Button 
+                  onClick={() => navigateToLevel(nextLevel.world, nextLevel.id)} 
+                  className="bg-blue-600 hover:bg-blue-700 flex-1"
+                >
+                  Next Level <ArrowRight className="ml-2 w-4 h-4" />
                 </Button>
-                <Button onClick={() => choosePath('right')} className="bg-red-600 hover:bg-red-700">
-                  Choose Right Path
-                </Button>
-              </>
-            )}
-            {gamePhase === 'result' && (
-              <div className="flex gap-2">
-                <Button onClick={resetGame} className="bg-green-600 hover:bg-green-700">
-                  Try Again
-                </Button>
-                {selectedPath === correctPath && nextLevel && (
-                  <Button 
-                    onClick={() => navigateToLevel(nextLevel.world, nextLevel.id)} 
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    Next Level <ArrowRight className="ml-2 w-4 h-4" />
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
-        </Card>
-      </div>
+              )}
+            </>
+          )}
+        </div>
+      </CollapsibleLevelCard>
 
       {/* 3D Canvas */}
       <div className="flex-1 bg-black">

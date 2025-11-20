@@ -1,5 +1,4 @@
-// Game State Management for ZK Quest
-// Tracks player progression, XP, achievements, and completed levels
+import { getRankForXp } from "./game-constants";
 
 export interface Level {
   id: number;
@@ -130,9 +129,9 @@ const DEFAULT_LEVELS: Level[] = [
   },
 ];
 
-// Calculate player level from XP (every 500 XP = 1 level)
+// Calculate player level from XP
 export function calculateLevel(xp: number): number {
-  return Math.floor(xp / 500) + 1;
+  return getRankForXp(xp).id;
 }
 
 // Local storage key

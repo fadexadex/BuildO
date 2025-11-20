@@ -6,10 +6,10 @@ import { useState, useRef, useEffect } from 'react';
 import { animated, useSpring } from '@react-spring/three';
 import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { useGameState } from '@/hooks/use-game-state';
 import { submitProofToHedera } from '@/lib/hedera-api';
 import { ArrowRight } from 'lucide-react';
+import { CollapsibleLevelCard } from '../CollapsibleLevelCard';
 
 // Animated components
 const AnimatedBox = animated(Box);
@@ -384,70 +384,71 @@ export default function SudokuScrambler() {
   };
 
   return (
-    <div className="w-full h-screen flex flex-col">
+    <div className="w-full h-screen flex flex-col relative">
       {/* Info Panel */}
-      <div className="absolute top-4 left-4 right-4 z-10 pointer-events-none">
-        <Card className="p-4 max-w-2xl mx-auto pointer-events-auto bg-black/80 backdrop-blur-sm border-purple-500/50">
-          <h2 className="text-2xl font-bold text-white mb-2">Level 3: Sudoku Scrambler</h2>
-          <p className="text-gray-300 mb-4">
-            {gamePhase === 'intro' && "Click tiles to reveal a completed Sudoku puzzle. Once you've verified the solution, commit it as a hash without revealing all the numbers!"}
-            {gamePhase === 'solving' && "Click tiles to reveal numbers. When ready, commit your solution as a cryptographic hash."}
-            {gamePhase === 'committing' && "Creating cryptographic commitment..."}
-            {gamePhase === 'committed' && "Solution committed! The hash proves you know a valid solution without revealing it. Submit to Hedera blockchain."}
-            {gamePhase === 'success' && "Success! Your commitment is now on Hedera's blockchain! 🎉"}
-          </p>
+      <CollapsibleLevelCard 
+        levelId="sudoku-scrambler" 
+        title="Level 3: Sudoku Scrambler"
+        className="pointer-events-auto"
+      >
+        <p className="text-gray-300 mb-4 text-sm">
+          {gamePhase === 'intro' && "Click tiles to reveal a completed Sudoku puzzle. Once you've verified the solution, commit it as a hash without revealing all the numbers!"}
+          {gamePhase === 'solving' && "Click tiles to reveal numbers. When ready, commit your solution as a cryptographic hash."}
+          {gamePhase === 'committing' && "Creating cryptographic commitment..."}
+          {gamePhase === 'committed' && "Solution committed! The hash proves you know a valid solution without revealing it. Submit to Hedera blockchain."}
+          {gamePhase === 'success' && "Success! Your commitment is now on Hedera's blockchain! 🎉"}
+        </p>
 
-          <div className="flex gap-2 flex-wrap">
-            {gamePhase === 'intro' && (
-              <Button onClick={startGame} className="bg-purple-600 hover:bg-purple-700">
-                Start Puzzle
-              </Button>
-            )}
-            {gamePhase === 'solving' && (
-              <>
-                <Button onClick={revealAll} className="bg-blue-600 hover:bg-blue-700">
-                  Reveal All
-                </Button>
-                <Button onClick={commitSolution} className="bg-green-600 hover:bg-green-700">
-                  Commit Solution
-                </Button>
-              </>
-            )}
-            {gamePhase === 'committed' && (
-              <Button onClick={submitToHedera} className="bg-orange-600 hover:bg-orange-700">
-                Submit to Hedera HCS
-              </Button>
-            )}
-            {gamePhase === 'success' && (
-              <div className="flex gap-2">
-                <Button onClick={resetGame} className="bg-purple-600 hover:bg-purple-700">
-                  Play Again
-                </Button>
-                {nextLevel && (
-                  <Button 
-                    onClick={() => navigateToLevel(nextLevel.world, nextLevel.id)} 
-                    className="bg-green-600 hover:bg-green-700"
-                  >
-                    Next Level <ArrowRight className="ml-2 w-4 h-4" />
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
-
-          {isCommitted && (
-            <div className="mt-4 p-3 bg-green-900/30 border border-green-500 rounded">
-              <p className="text-green-300 text-sm font-mono">
-                <strong>Commitment Hash:</strong><br />
-                {commitmentHash}
-              </p>
-              <p className="text-gray-300 text-xs mt-2">
-                This hash represents your solution. Anyone can verify you committed to a specific answer, but can't determine what it is!
-              </p>
-            </div>
+        <div className="flex flex-wrap gap-2">
+          {gamePhase === 'intro' && (
+            <Button onClick={startGame} className="bg-purple-600 hover:bg-purple-700 flex-1">
+              Start Puzzle
+            </Button>
           )}
-        </Card>
-      </div>
+          {gamePhase === 'solving' && (
+            <>
+              <Button onClick={revealAll} className="bg-blue-600 hover:bg-blue-700 flex-1">
+                Reveal All
+              </Button>
+              <Button onClick={commitSolution} className="bg-green-600 hover:bg-green-700 flex-1">
+                Commit Solution
+              </Button>
+            </>
+          )}
+          {gamePhase === 'committing' && (
+            <Button onClick={submitToHedera} className="bg-orange-600 hover:bg-orange-700 flex-1">
+              Submit to Hedera HCS
+            </Button>
+          )}
+          {gamePhase === 'success' && (
+            <>
+              <Button onClick={resetGame} className="bg-purple-600 hover:bg-purple-700 flex-1">
+                Play Again
+              </Button>
+              {nextLevel && (
+                <Button 
+                  onClick={() => navigateToLevel(nextLevel.world, nextLevel.id)} 
+                  className="bg-green-600 hover:bg-green-700 flex-1"
+                >
+                  Next Level <ArrowRight className="ml-2 w-4 h-4" />
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+
+        {isCommitted && (
+          <div className="mt-4 p-3 bg-green-900/30 border border-green-500 rounded">
+            <p className="text-green-300 text-sm font-mono">
+              <strong>Commitment Hash:</strong><br />
+              {commitmentHash}
+            </p>
+            <p className="text-gray-300 text-xs mt-2">
+              This hash represents your solution. Anyone can verify you committed to a specific answer, but can't determine what it is!
+            </p>
+          </div>
+        )}
+      </CollapsibleLevelCard>
 
       {/* 3D Canvas */}
       <div className="flex-1">
