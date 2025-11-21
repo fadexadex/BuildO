@@ -50,6 +50,9 @@ const downloadFile = (url, destination) => {
     console.log(`Saving to: ${destination}`);
 
     const file = fs.createWriteStream(destination);
+    file.on('error', (err) => {
+      fs.unlink(destination, () => reject(err));
+    });
     
     https.get(url, (response) => {
       // Follow redirects
@@ -81,9 +84,15 @@ const downloadFile = (url, destination) => {
       response.pipe(file);
 
       file.on('finish', () => {
-        file.close();
-        console.log('Download completed!');
-        resolve();
+        // Wait until the file descriptor is truly closed before resolving.
+        file.close((closeErr) => {
+          if (closeErr) {
+            reject(closeErr);
+            return;
+          }
+          console.log('Download completed!');
+          resolve();
+        });
       });
     }).on('error', (err) => {
       fs.unlink(destination, () => {}); // Delete partial file
