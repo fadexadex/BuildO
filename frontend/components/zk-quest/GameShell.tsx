@@ -4,7 +4,6 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Stars, Float } from "@react-three/drei";
 import { useGameState } from "@/hooks/use-game-state";
 import { DemoModeProvider } from "@/hooks/use-demo-mode";
-import { useWallet } from "@/contexts/WalletContext";
 import { useMode } from "@/contexts/ModeContext";
 import { BuildPlayground } from "@/components/build-mode/BuildPlayground";
 import { WorldMap } from "./WorldMap";
@@ -34,7 +33,6 @@ import {
 import { audioSystem } from "@/lib/audio-system";
 import { toggleHaptics } from "@/lib/haptics";
 import { LevelWrapper } from "./LevelWrapper";
-import { ManualWalletConnect } from "@/components/ManualWalletConnect";
 
 // Dynamic imports for levels
 const ColorGame = dynamic(() => import("./levels/ColorGame"));
@@ -112,13 +110,13 @@ function LoadingFallback() {
 
 export function GameShell() {
   const { gameState, isLoading, resetGameState, returnToMap } = useGameState();
-  const { accountId, isConnected, connect, disconnect } = useWallet();
   const { mode, setMode } = useMode();
   const [showAchievements, setShowAchievements] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showPerformanceStats, setShowPerformanceStats] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isHapticsEnabled, setIsHapticsEnabled] = useState(true);
+  const [audioInitialized, setAudioInitialized] = useState(false);
 
   const handleMuteToggle = (muted: boolean) => {
     setIsMuted(muted);
@@ -129,6 +127,66 @@ export function GameShell() {
     setIsHapticsEnabled(enabled);
     toggleHaptics(enabled);
   };
+
+  // Initialize audio on mount (requires user interaction)
+  useEffect(() => {
+    const initAudio = async () => {
+      await audioSystem.initialize();
+      const status = audioSystem.getStatus();
+      console.log('Audio system status:', status);
+      setAudioInitialized(status.initialized && status.state === 'running');
+    };
+    
+    // Try to initialize immediately
+    initAudio();
+    
+    // Also try on first click anywhere
+    const handleFirstClick = async () => {
+      await audioSystem.initialize();
+      const status = audioSystem.getStatus();
+      setAudioInitialized(status.initialized && status.state === 'running');
+      document.removeEventListener('click', handleFirstClick);
+    };
+    document.addEventListener('click', handleFirstClick);
+    
+    return () => {
+      document.removeEventListener('click', handleFirstClick);
+    };
+  }, []);
+
+  // Ambient sound disabled by default - only UI sounds will play
+  // Uncomment below if you want continuous ambient background sound
+  /*
+  useEffect(() => {
+    const startAmbient = async () => {
+      if (mode === 'quest' && !isMuted) {
+        await audioSystem.startAmbient();
+        console.log('Ambient sound started');
+      } else {
+        audioSystem.stopAmbient();
+      }
+    };
+    startAmbient();
+    
+    return () => {
+      audioSystem.stopAmbient();
+    };
+  }, [mode, isMuted]);
+  */
+
+  // Play transition sound when switching modes
+  useEffect(() => {
+    if (!isMuted) {
+      audioSystem.play('transition', 0.5);
+    }
+  }, [mode]);
+
+  // Play sound when entering a level
+  useEffect(() => {
+    if (gameState?.isPlaying && !isMuted) {
+      audioSystem.play('levelStart', 0.7);
+    }
+  }, [gameState?.isPlaying, gameState?.currentLevel]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -321,11 +379,6 @@ export function GameShell() {
                   </>
                 )}
 
-                {/* Wallet Connect - Hidden in Build Mode */}
-                {mode !== 'build' && (
-                  <ManualWalletConnect />
-                )}
-
                 {/* Settings */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -409,9 +462,9 @@ export function GameShell() {
                 <div>
                   Player: <span className="text-white">{gameState.playerName}</span>
                 </div>
-                  {(accountId || gameState.hederaAccountId) && (
+                  {gameState.hederaAccountId && (
                   <div>
-                    Hedera: <span className="text-cyan-400">{accountId || gameState.hederaAccountId}</span>
+                    Hedera: <span className="text-cyan-400">{gameState.hederaAccountId}</span>
                   </div>
                 )}
                 <div>

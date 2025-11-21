@@ -7,9 +7,8 @@ import { Providers } from "@/components/Providers"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "BuildO - Agentic Hedera Playground",
-  description: "Interactive Hedera development environment with AI assistance",
-    generator: 'v0.dev'
+  title: "Zk Playground",
+  description: "Interactive Zk development environment with AI assistance",
 }
 
 export default function RootLayout({

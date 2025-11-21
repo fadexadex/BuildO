@@ -2,13 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
-import { CodeEditor, CodeDiffEditor } from './CodeEditor';
+import { CodeEditor } from './CodeEditor';
 import { CircuitViz } from './CircuitViz';
 import { parseCircuitForVisualization, CircuitNode, CircuitEdge } from '@/lib/circuit-parser';
 import { Button } from '@/components/ui/button';
-import { Play, Save, Terminal, Layers, Wand2, Loader2, History, Camera, Upload, HelpCircle } from 'lucide-react';
+import { Play, Download, Terminal, Layers, Wand2, Loader2, Upload, HelpCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { CircuitAgentAPI, ZkAPI } from '@/lib/api';
 import { useToast } from "@/components/ui/use-toast";
@@ -37,8 +36,18 @@ template Multiplier2() {
 
 component main = Multiplier2();`;
 
+const CODE_STORAGE_KEY = 'zk-quest-build-code';
+
 export function BuildPlayground() {
-  const [code, setCode] = useState(INITIAL_CODE);
+  // Load code from localStorage or use initial code
+  const [code, setCode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const savedCode = localStorage.getItem(CODE_STORAGE_KEY);
+      return savedCode || INITIAL_CODE;
+    }
+    return INITIAL_CODE;
+  });
+  
   const [nodes, setNodes] = useState<CircuitNode[]>([]);
   const [edges, setEdges] = useState<CircuitEdge[]>([]);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
@@ -69,11 +78,14 @@ export function BuildPlayground() {
   const [activeTab, setActiveTab] = useState("inputs");
   const { toast } = useToast();
 
-  // Snapshot State
-  const [snapshots, setSnapshots] = useState<Array<{id: string, timestamp: number, code: string}>>([]);
-  const [compareMode, setCompareMode] = useState(false);
-  const [baseSnapshotId, setBaseSnapshotId] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Save code to localStorage whenever it changes (intelligent caching)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(CODE_STORAGE_KEY, code);
+    }
+  }, [code]);
 
   useEffect(() => {
     const { nodes: newNodes, edges: newEdges } = parseCircuitForVisualization(code);
@@ -82,27 +94,20 @@ export function BuildPlayground() {
     setIsCompiled(false); // Reset compilation on code change
   }, [code]);
 
-  const takeSnapshot = () => {
-      const newSnap = {
-          id: `snap-${Date.now()}`,
-          timestamp: Date.now(),
-          code: code
-      };
-      setSnapshots(prev => [newSnap, ...prev]);
-      toast({ title: "Snapshot captured" });
-  };
-
-  const toggleCompare = (snapId: string) => {
-      if (compareMode && baseSnapshotId === snapId) {
-          setCompareMode(false);
-          setBaseSnapshotId(null);
-      } else {
-          setCompareMode(true);
-          setBaseSnapshotId(snapId);
-      }
-  };
-
   const addLog = (msg: string) => setLogs(prev => [...prev, msg]);
+
+  const handleDownload = () => {
+    const blob = new Blob([code], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'circuit.circom';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast({ title: "Circuit Downloaded", description: "circuit.circom saved to your downloads" });
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -399,47 +404,14 @@ export function BuildPlayground() {
                   </SelectContent>
                 </Select>
                 
-                 <Popover>
-                    <PopoverTrigger asChild>
-                        <Button size="sm" variant="ghost" className="text-slate-300 hover:bg-slate-800 hover:text-white"><History className="w-4 h-4 mr-2" /> History</Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-80 bg-slate-900 border-slate-700 mr-4">
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                                <h4 className="font-medium text-white text-sm">Snapshots</h4>
-                                <Button size="sm" variant="secondary" className="h-6 text-xs" onClick={takeSnapshot}><Camera className="w-3 h-3 mr-1"/> Capture</Button>
-                            </div>
-                            {snapshots.length === 0 && <div className="text-xs text-slate-500 text-center py-2">No snapshots yet.</div>}
-                            <div className="max-h-[300px] overflow-y-auto space-y-1">
-                                {snapshots.map(snap => (
-                                    <div key={snap.id} className="flex items-center justify-between text-xs p-2 hover:bg-slate-800 rounded group">
-                                        <span className="text-slate-300 font-mono">{new Date(snap.timestamp).toLocaleTimeString()}</span>
-                                        <div className="flex gap-1">
-                                            <Button 
-                                                size="sm" 
-                                                variant={compareMode && baseSnapshotId === snap.id ? "destructive" : "outline"} 
-                                                className="h-6 text-[10px] px-2"
-                                                onClick={() => toggleCompare(snap.id)}
-                                            >
-                                                {compareMode && baseSnapshotId === snap.id ? "Close Diff" : "Compare"}
-                                            </Button>
-                                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setCode(snap.code)} title="Restore">
-                                                <Play className="w-3 h-3 rotate-180" />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </PopoverContent>
-                </Popover>
-
                  <input type="file" ref={fileInputRef} className="hidden" accept=".circom" onChange={handleFileUpload} />
                  <Button size="sm" variant="ghost" className="text-slate-300 hover:bg-slate-800 hover:text-white" onClick={() => fileInputRef.current?.click()}>
                     <Upload className="w-4 h-4 mr-2" /> Upload
                  </Button>
 
-                 <Button size="sm" variant="ghost" className="text-slate-300 hover:bg-slate-800 hover:text-white"><Save className="w-4 h-4 mr-2" /> Save</Button>
+                 <Button size="sm" variant="ghost" className="text-slate-300 hover:bg-slate-800 hover:text-white" onClick={handleDownload}>
+                    <Download className="w-4 h-4 mr-2" /> Download
+                 </Button>
                  
                  <div className="h-6 w-px bg-slate-800 mx-2" />
                  <ManualWalletConnect />
@@ -458,10 +430,10 @@ export function BuildPlayground() {
                         <div className="space-y-4 text-sm">
                             <ul className="list-disc pl-4 space-y-2 text-slate-300">
                                 <li><strong className="text-purple-400">AI Assistant</strong>: Use the Wand icon to generate circuits from natural language descriptions.</li>
-                                <li><strong className="text-indigo-400">Editor</strong>: Write standard Circom code. Autosaving is enabled locally.</li>
+                                <li><strong className="text-indigo-400">Editor</strong>: Write standard Circom code. Your code is automatically saved locally and persists across reloads.</li>
                                 <li><strong className="text-green-400">Visualization</strong>: 3D view of your circuit's constraints and signals. Red nodes indicate errors.</li>
-                                <li><strong className="text-orange-400">Snapshots</strong>: Use the History button to save versions and compare changes.</li>
-                                <li><strong className="text-blue-400">Execution</strong>: Select a proving system (Groth16/Plonk) and click Compile & Run.</li>
+                                <li><strong className="text-cyan-400">Upload/Download</strong>: Upload existing .circom files or download your current circuit.</li>
+                                <li><strong className="text-blue-400">Execution</strong>: Select a proving system (Groth16/Plonk/FFLONK) and click Compile & Run.</li>
                             </ul>
                         </div>
                     </DialogContent>
@@ -527,15 +499,7 @@ export function BuildPlayground() {
         
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         <ResizablePanel defaultSize={40} minSize={20} className="border-r border-slate-800">
-          {compareMode && baseSnapshotId ? (
-             <CodeDiffEditor 
-                key={baseSnapshotId}
-                original={snapshots.find(s => s.id === baseSnapshotId)?.code || ''} 
-                modified={code} 
-             />
-          ) : (
-             <CodeEditor code={code} onChange={setCode} />
-          )}
+          <CodeEditor code={code} onChange={setCode} />
         </ResizablePanel>
         
         <ResizableHandle withHandle className="bg-slate-800" />

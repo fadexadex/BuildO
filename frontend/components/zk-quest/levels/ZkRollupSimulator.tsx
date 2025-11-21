@@ -7,7 +7,6 @@ import { animated, useSpring } from '@react-spring/three';
 import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
 import { useGameState } from '@/hooks/use-game-state';
-import { submitProofToHedera } from '@/lib/hedera-api';
 import { CollapsibleLevelCard } from '../CollapsibleLevelCard';
 
 // Animated components
@@ -547,23 +546,17 @@ export default function ZkRollupSimulator() {
                 setIsSubmittingToHedera(false);
                 setGamePhase('success');
                 
-                // Complete level
-                setTimeout(async () => {
-                  try {
-                    const proofHash = `0x${Math.random().toString(16).substr(2, 8)}`;
-                    await submitProofToHedera({
-                      level: 'zk-rollup',
-                      proofHash,
-                      metadata: { 
-                        batchSize: 5,
-                        stateRoot: `0x${Math.random().toString(16).substr(2, 8)}`
-                      }
-                    });
-                    completeLevel(9);
-                  } catch (error) {
-                    console.error('Failed to submit proof:', error);
-                    completeLevel(9);
-                  }
+                // Complete level (simulate commitment locally)
+                setTimeout(() => {
+                  const proofHash = `0x${Math.random().toString(16).substr(2, 8)}`;
+                  const stateRoot = `0x${Math.random().toString(16).substr(2, 8)}`;
+                  console.log('zkRollup batch recorded locally:', {
+                    proofHash,
+                    stateRoot,
+                    batchSize: 5,
+                    transactions: transactions.slice(0, 5),
+                  });
+                  completeLevel(9, proofHash);
                 }, 1000);
               }, 3000);
             }, 2000);

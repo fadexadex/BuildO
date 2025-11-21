@@ -6,17 +6,19 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 export interface ProofSubmissionRequest {
-  level: string;
-  proofHash: string;
-  userId: string;
+  levelId: string;
+  playerId: string;
+  proof: Record<string, unknown> | string;
+  metadata?: Record<string, unknown>;
   recipientAccountId?: string;
 }
 
 export interface ProofSubmissionResponse {
   success: boolean;
   transactionId: string;
-  nftSerial?: string;
+  proofHash: string;
   message: string;
+  nftSerial?: string;
 }
 
 export interface LeaderboardEntry {
@@ -27,13 +29,13 @@ export interface LeaderboardEntry {
 }
 
 /**
- * Submit a ZK proof and mint achievement NFT
+ * Submit a ZK proof commitment to Hedera HCS
  */
 export async function submitProofToHedera(
   request: ProofSubmissionRequest
 ): Promise<ProofSubmissionResponse> {
   try {
-    const response = await fetch(`${API_BASE}/zk/submit-proof`, {
+    const response = await fetch(`${API_BASE}/zk/submit-to-hedera`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

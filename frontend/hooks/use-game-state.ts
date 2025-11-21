@@ -87,6 +87,12 @@ export function GameStateProvider({ children }: { children: React.ReactNode }) {
         // Only update if state actually changed
         if (newState !== gameState) {
           setGameState(newState);
+          
+          // Play level complete sound
+          if (typeof window !== 'undefined') {
+            const { audioSystem } = require('@/lib/audio-system');
+            audioSystem.play('levelComplete', 0.8);
+          }
         }
       } catch (error) {
         console.error("Error completing level:", error);

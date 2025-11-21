@@ -21,6 +21,9 @@ COPY scripts ./scripts
 # Install npm dependencies (this will also install Circom automatically via postinstall)
 RUN npm ci --only=production
 
+# Download Powers of Tau ceremony file so proofs work without runtime downloads
+RUN npm run setup:ptau
+
 # Copy application source
 COPY . .
 

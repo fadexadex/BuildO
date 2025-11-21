@@ -8,7 +8,6 @@ import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useGameState } from '@/hooks/use-game-state';
-import { submitProofToHedera } from '@/lib/hedera-api';
 import { ArrowRight } from 'lucide-react';
 import { CollapsibleLevelCard } from '../CollapsibleLevelCard';
 
@@ -337,20 +336,14 @@ export default function PrivateTransfer() {
       setGamePhase('success');
       setShowProof(false);
 
-      // Complete level and submit to Hedera
+      // Complete level locally (no Hedera submission in game mode)
       setTimeout(async () => {
-        try {
-          const proofHash = `0x${Math.random().toString(16).substr(2, 8)}`;
-          await submitProofToHedera({
-            level: 'private-transfer',
-            proofHash,
-            metadata: { amount: transferAmount }
-          });
-          completeLevel(7);
-        } catch (error) {
-          console.error('Failed to submit proof:', error);
-          completeLevel(7);
-        }
+        const proofHash = `0x${Math.random().toString(16).substr(2, 8)}`;
+        console.log('Private transfer proof recorded locally:', {
+          proofHash,
+          transferAmount,
+        });
+        completeLevel(7, proofHash);
       }, 1000);
     }, 2000);
   };

@@ -19,9 +19,10 @@ const ModeContext = createContext<ModeContextType>({
 export const useMode = () => useContext(ModeContext);
 
 export const ModeProvider = ({ children }: { children: React.ReactNode }) => {
+    // Default to 'quest' (Game tab), but restore from localStorage if available
     const [mode, setMode] = useState<AppMode>('quest');
 
-    // Persist mode preference
+    // Restore the user's last selected mode on mount
     useEffect(() => {
         const savedMode = typeof window !== 'undefined' ? localStorage.getItem('app_mode') as AppMode : null;
         if (savedMode && (savedMode === 'quest' || savedMode === 'build')) {

@@ -7,9 +7,9 @@ import { animated, useSpring } from '@react-spring/three';
 import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
 import { useGameState } from '@/hooks/use-game-state';
-import { submitProofToHedera } from '@/lib/hedera-api';
 import { ArrowRight } from 'lucide-react';
 import { CollapsibleLevelCard } from '../CollapsibleLevelCard';
+import { audioSystem } from '@/lib/audio-system';
 
 // Animated components
 const AnimatedSphere = animated(Sphere);
@@ -330,7 +330,7 @@ export default function CaveChallenge() {
   const [cameraPosition, setCameraPosition] = useState<[number, number, number]>([0, 8, 15]);
   const [cameraLookAt, setCameraLookAt] = useState<[number, number, number]>([0, 0, 0]);
   const [correctPath, setCorrectPath] = useState<'left' | 'right'>('left');
-  const { completeLevel, gameState, navigateToLevel, nextLevel } = useGameState();
+  const { completeLevel, navigateToLevel, nextLevel } = useGameState();
 
   useEffect(() => {
     // Randomly determine the correct path
@@ -346,6 +346,9 @@ export default function CaveChallenge() {
   const choosePath = (path: 'left' | 'right') => {
     if (gamePhase !== 'choose') return;
     
+    // Play selection sound
+    audioSystem.play('click', 0.6);
+    
     setSelectedPath(path);
     setGamePhase('moving');
 
@@ -357,6 +360,9 @@ export default function CaveChallenge() {
       ...prev,
       [path]: true
     }));
+    
+    // Play transition sound
+    audioSystem.play('whoosh', 0.5);
 
     // Camera follows character automatically in 'moving' phase via Scene component
 
@@ -388,6 +394,9 @@ export default function CaveChallenge() {
   };
 
   const checkResult = (path: 'left' | 'right') => {
+    // Play compute sound
+    audioSystem.play('compute', 0.5);
+    
     setTimeout(() => {
       setGamePhase('result');
       
@@ -400,25 +409,21 @@ export default function CaveChallenge() {
       const isCorrect = path === correctPath;
       
       if (isCorrect) {
-        setTimeout(async () => {
-          // Submit proof to Hedera
-          try {
-            const proofHash = `0x${Math.random().toString(16).substr(2, 8)}`;
-            const result = await submitProofToHedera({
-              level: 'cave-challenge',
-              proofHash,
-              userId: gameState?.playerId || 'anonymous',
-            });
-            console.log('Hedera NFT minted:', result);
-            
-            // Complete level with proof hash and NFT token ID
-            completeLevel(2, result.transactionId, result.nftSerial);
-          } catch (error) {
-            console.error('Failed to mint NFT:', error);
-            // Still complete the level even if Hedera fails
-            completeLevel(2);
-          }
+        // Play success sound
+        audioSystem.play('puzzleSolve', 0.7);
+        
+        setTimeout(() => {
+          const proofHash = `0x${Math.random().toString(16).substr(2, 8)}`;
+          console.log('Cave Challenge proof recorded locally:', {
+            proofHash,
+            chosenPath: path,
+            correctPath,
+          });
+          completeLevel(2, proofHash);
         }, 2000);
+      } else {
+        // Play error sound
+        audioSystem.play('error', 0.6);
       }
     }, 500);
   };

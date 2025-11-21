@@ -7,7 +7,6 @@ import { animated, useSpring } from '@react-spring/three';
 import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
 import { useGameState } from '@/hooks/use-game-state';
-import { submitProofToHedera } from '@/lib/hedera-api';
 import { ArrowRight } from 'lucide-react';
 import { CollapsibleLevelCard } from '../CollapsibleLevelCard';
 
@@ -309,7 +308,7 @@ export default function SudokuScrambler() {
   const [commitmentHash, setCommitmentHash] = useState('');
   const [showHashFlow, setShowHashFlow] = useState(false);
   const [cameraPosition, setCameraPosition] = useState<[number, number, number]>([0, 8, 10]);
-  const { completeLevel, gameState, navigateToLevel, nextLevel } = useGameState();
+  const { completeLevel, navigateToLevel, nextLevel } = useGameState();
 
   const handleTileClick = (row: number, col: number) => {
     if (gamePhase !== 'solving' || isCommitted) return;
@@ -346,28 +345,17 @@ export default function SudokuScrambler() {
     }, 2000);
   };
 
-  const submitToHedera = async () => {
+  const finalizeCommitment = () => {
     setGamePhase('success');
-    
-    // Submit commitment hash to Hedera HCS topic
-    try {
-      const result = await submitProofToHedera({
-        level: 'sudoku-scrambler',
-        proofHash: commitmentHash,
-        userId: gameState?.playerId || 'anonymous',
-      });
-      console.log('Submitted to Hedera HCS:', result);
-      
-      setTimeout(() => {
-        completeLevel(3, result.transactionId, result.nftSerial);
-      }, 1500);
-    } catch (error) {
-      console.error('Failed to submit to Hedera:', error);
-      // Still complete the level even if Hedera submission fails
-      setTimeout(() => {
-        completeLevel(3);
-      }, 1500);
-    }
+    const revealedCount = revealedTiles.flat().filter(Boolean).length;
+    console.log('Sudoku commitment finalized:', {
+      commitmentHash,
+      revealedCount,
+    });
+
+    setTimeout(() => {
+      completeLevel(3, commitmentHash);
+    }, 1500);
   };
 
   const revealAll = () => {
@@ -395,8 +383,8 @@ export default function SudokuScrambler() {
           {gamePhase === 'intro' && "Click tiles to reveal a completed Sudoku puzzle. Once you've verified the solution, commit it as a hash without revealing all the numbers!"}
           {gamePhase === 'solving' && "Click tiles to reveal numbers. When ready, commit your solution as a cryptographic hash."}
           {gamePhase === 'committing' && "Creating cryptographic commitment..."}
-          {gamePhase === 'committed' && "Solution committed! The hash proves you know a valid solution without revealing it. Submit to Hedera blockchain."}
-          {gamePhase === 'success' && "Success! Your commitment is now on Hedera's blockchain! 🎉"}
+          {gamePhase === 'committed' && "Solution committed! The hash proves you know a valid solution without revealing it. Finalize it to finish the level."}
+          {gamePhase === 'success' && "Success! Your commitment is locked in—level complete! 🎉"}
         </p>
 
         <div className="flex flex-wrap gap-2">
@@ -415,9 +403,13 @@ export default function SudokuScrambler() {
               </Button>
             </>
           )}
-          {gamePhase === 'committing' && (
-            <Button onClick={submitToHedera} className="bg-orange-600 hover:bg-orange-700 flex-1">
-              Submit to Hedera HCS
+          {(gamePhase === 'committing' || gamePhase === 'committed') && (
+            <Button 
+              onClick={finalizeCommitment} 
+              disabled={gamePhase === 'committing'}
+              className="bg-orange-600 hover:bg-orange-700 flex-1 disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {gamePhase === 'committing' ? 'Preparing Commitment…' : 'Finalize Commitment'}
             </Button>
           )}
           {gamePhase === 'success' && (

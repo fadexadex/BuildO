@@ -13,6 +13,7 @@ import { Suspense, useRef, useState, useEffect, useMemo, useCallback } from "rea
 import * as THREE from "three";
 import { useRouter } from "next/navigation";
 import { levelNarratives } from "@/data/level-narratives";
+import { audioSystem } from "@/lib/audio-system";
 
 interface LevelMarkerProps {
   position: [number, number, number];
@@ -84,13 +85,27 @@ function LevelMarker({ position, level, onClick }: LevelMarkerProps) {
     ? "#3b82f6" // blue
     : "#64748b"; // gray
 
+  const handleHover = () => {
+    if (level.unlocked) {
+      setHovered(true);
+      audioSystem.play('hover', 0.4);
+    }
+  };
+
+  const handleClick = () => {
+    if (level.unlocked) {
+      audioSystem.play('click', 0.6);
+      onClick();
+    }
+  };
+
   return (
     <group position={position}>
       {/* Level Sphere */}
       <mesh
         ref={meshRef}
-        onClick={level.unlocked ? onClick : undefined}
-        onPointerOver={() => level.unlocked && setHovered(true)}
+        onClick={handleClick}
+        onPointerOver={handleHover}
         onPointerOut={() => setHovered(false)}
         scale={hovered ? 1.2 : 1}
       >
@@ -334,6 +349,7 @@ export function WorldMap() {
                 <Button 
                   className="w-full gap-2"
                   onClick={() => {
+                    audioSystem.play('powerup', 0.7);
                     navigateToLevel(selectedLevelData.world, selectedLevelData.id);
                   }}
                 >

@@ -8,7 +8,6 @@ import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
 import { CollapsibleLevelCard } from '../CollapsibleLevelCard';
 import { useGameState } from '@/hooks/use-game-state';
-import { submitProofToHedera } from '@/lib/hedera-api';
 import { ArrowRight } from 'lucide-react';
 
 // Animated 3D Ball Component
@@ -209,10 +208,16 @@ export default function ColorGame() {
   const [gamePhase, setGamePhase] = useState<'intro' | 'playing' | 'reveal' | 'success'>('intro');
   const [showSuccess, setShowSuccess] = useState(false);
   const [cameraPosition, setCameraPosition] = useState<[number, number, number]>([0, 2, 10]);
-  const { completeLevel, gameState, navigateToLevel, nextLevel } = useGameState();
+  const { completeLevel, navigateToLevel, nextLevel } = useGameState();
 
   const handleBallClick = (ball: 'red' | 'blue') => {
     if (gamePhase !== 'playing') return;
+
+    // Play click sound
+    if (typeof window !== 'undefined') {
+      const { audioSystem } = require('@/lib/audio-system');
+      audioSystem.play('click', 0.5);
+    }
 
     if (selectedBall === null) {
       setSelectedBall(ball);
@@ -224,6 +229,12 @@ export default function ColorGame() {
       }));
       setSelectedBall(null);
       setSwapCount(prev => prev + 1);
+      
+      // Play swap sound
+      if (typeof window !== 'undefined') {
+        const { audioSystem } = require('@/lib/audio-system');
+        audioSystem.play('whoosh', 0.6);
+      }
     } else {
       setSelectedBall(null);
     }
@@ -238,6 +249,12 @@ export default function ColorGame() {
     setGamePhase('reveal');
     setCameraPosition([0, 0, 6]);
     
+    // Play computing sound
+    if (typeof window !== 'undefined') {
+      const { audioSystem } = require('@/lib/audio-system');
+      audioSystem.play('compute', 0.5);
+    }
+    
     // Simulate checking - in real implementation, this would verify ZK proof
     setTimeout(() => {
       const isCorrect = ballPositions.red[0] === 4 && ballPositions.blue[0] === -4;
@@ -245,27 +262,31 @@ export default function ColorGame() {
         setGamePhase('success');
         setShowSuccess(true);
         
-        // Complete level and mint NFT
+        // Play success sound
+        if (typeof window !== 'undefined') {
+          const { audioSystem } = require('@/lib/audio-system');
+          audioSystem.play('puzzleSolve', 0.7);
+        }
+        
+        // Complete level reward locally (no Hedera submission in game mode)
         setTimeout(async () => {
-          // Submit proof to Hedera and mint NFT
-          try {
-            const proofHash = `0x${Math.random().toString(16).substr(2, 8)}`;
-            const result = await submitProofToHedera({
-              level: 'color-game',
-              proofHash,
-              userId: gameState?.playerId || 'anonymous',
-            });
-            console.log('Hedera NFT minted:', result);
-            
-            // Complete level with proof hash and NFT token ID
-            completeLevel(1, result.transactionId, result.nftSerial);
-          } catch (error) {
-            console.error('Failed to mint NFT:', error);
-            // Still complete the level even if Hedera fails
-            completeLevel(1);
-          }
+          const proofHash = `0x${Math.random().toString(16).substr(2, 8)}`;
+          console.log('Color Game proof commitment recorded:', {
+            proofHash,
+            swaps: swapCount,
+            finalPositions: {
+              red: ballPositions.red,
+              blue: ballPositions.blue,
+            },
+          });
+          completeLevel(1, proofHash);
         }, 2000);
       } else {
+        // Play error sound
+        if (typeof window !== 'undefined') {
+          const { audioSystem } = require('@/lib/audio-system');
+          audioSystem.play('error', 0.6);
+        }
         alert('Not quite! The balls need to be swapped. Try again!');
         setGamePhase('playing');
       }

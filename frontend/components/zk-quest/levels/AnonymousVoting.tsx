@@ -8,7 +8,6 @@ import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
 import { CollapsibleLevelCard } from '../CollapsibleLevelCard';
 import { useGameState } from '@/hooks/use-game-state';
-import { submitProofToHedera } from '@/lib/hedera-api';
 import { ArrowRight } from 'lucide-react';
 
 // Animated components
@@ -551,24 +550,18 @@ export default function AnonymousVoting() {
     setTimeout(() => {
       setGamePhase('success');
       
-      // Complete level and submit to Hedera
+      // Complete level locally
       setTimeout(async () => {
-        try {
-          const proofHash = `0x${Math.random().toString(16).substr(2, 8)}`;
-          await submitProofToHedera({
-            level: 'anonymous-voting',
-            proofHash,
-            metadata: { 
-              totalVotes: ballotBoxVotes,
-              optionA: optionAVotes,
-              optionB: optionBVotes
-            }
-          });
-          completeLevel(8);
-        } catch (error) {
-          console.error('Failed to submit proof:', error);
-          completeLevel(8);
-        }
+        const proofHash = `0x${Math.random().toString(16).substr(2, 8)}`;
+        console.log('Anonymous voting proof recorded locally:', {
+          proofHash,
+          totals: {
+            total: ballotBoxVotes,
+            optionA: optionAVotes,
+            optionB: optionBVotes,
+          },
+        });
+        completeLevel(8, proofHash);
       }, 1000);
     }, 2000);
   };
