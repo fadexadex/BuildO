@@ -145,7 +145,13 @@ const setupCircom = async () => {
 
     // Download the binary
     console.log('Downloading Circom compiler...');
-    await downloadFile(binaryInfo.url, binaryPath);
+    const tempBinaryPath = `${binaryPath}.download`;
+    // Remove any stale temp file
+    if (fs.existsSync(tempBinaryPath)) {
+      fs.unlinkSync(tempBinaryPath);
+    }
+    await downloadFile(binaryInfo.url, tempBinaryPath);
+    fs.renameSync(tempBinaryPath, binaryPath);
 
     // Make executable on Unix-like systems
     if (binaryInfo.isExecutable) {
