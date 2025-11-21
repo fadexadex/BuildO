@@ -49,55 +49,72 @@ const downloadFile = (url, destination) => {
     console.log(`Downloading from: ${url}`);
     console.log(`Saving to: ${destination}`);
 
-    const file = fs.createWriteStream(destination);
-    file.on('error', (err) => {
-      fs.unlink(destination, () => reject(err));
-    });
-    
+    let fileHandle;
+
+    const cleanupAndReject = (err) => {
+      const finalize = () => {
+        if (fs.existsSync(destination)) {
+          fs.unlink(destination, () => reject(err));
+        } else {
+          reject(err);
+        }
+      };
+
+      if (fileHandle) {
+        fileHandle.close(() => finalize());
+      } else {
+        finalize();
+      }
+    };
+
     https.get(url, (response) => {
       // Follow redirects
       if (response.statusCode === 302 || response.statusCode === 301) {
+        response.resume(); // drain data to free socket
         return downloadFile(response.headers.location, destination)
           .then(resolve)
           .catch(reject);
       }
 
       if (response.statusCode !== 200) {
+        response.resume();
         reject(new Error(`Failed to download: HTTP ${response.statusCode}`));
         return;
       }
 
-      const totalBytes = parseInt(response.headers['content-length'], 10);
+      const totalBytes = parseInt(response.headers['content-length'] || '0', 10);
       let downloadedBytes = 0;
       let lastPercent = 0;
 
+      fileHandle = fs.createWriteStream(destination);
+      fileHandle.on('error', cleanupAndReject);
+
       response.on('data', (chunk) => {
         downloadedBytes += chunk.length;
-        const percent = Math.floor((downloadedBytes / totalBytes) * 100);
-        
-        if (percent !== lastPercent && percent % 10 === 0) {
-          console.log(`Download progress: ${percent}%`);
-          lastPercent = percent;
+        if (totalBytes > 0) {
+          const percent = Math.floor((downloadedBytes / totalBytes) * 100);
+          
+          if (percent !== lastPercent && percent % 10 === 0) {
+            console.log(`Download progress: ${percent}%`);
+            lastPercent = percent;
+          }
         }
       });
 
-      response.pipe(file);
+      response.pipe(fileHandle);
 
-      file.on('finish', () => {
+      fileHandle.on('finish', () => {
         // Wait until the file descriptor is truly closed before resolving.
-        file.close((closeErr) => {
+        fileHandle.close((closeErr) => {
           if (closeErr) {
-            reject(closeErr);
+            cleanupAndReject(closeErr);
             return;
           }
           console.log('Download completed!');
           resolve();
         });
       });
-    }).on('error', (err) => {
-      fs.unlink(destination, () => {}); // Delete partial file
-      reject(err);
-    });
+    }).on('error', cleanupAndReject);
   });
 };
 
