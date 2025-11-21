@@ -2,12 +2,10 @@
 
 import { Button } from "@/components/ui/button";
 import { useGameState } from "@/hooks/use-game-state";
-import { useWallet } from "@/contexts/WalletContext";
-import { ArrowLeft, Play } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 export function ContextualNav() {
   const { gameState, returnToMap } = useGameState();
-  const { isConnected, connect } = useWallet();
 
   if (!gameState) return null;
 
@@ -25,20 +23,7 @@ export function ContextualNav() {
     );
   }
 
-  // On Map, Disconnected
-  if (!isConnected) {
-    return (
-      <Button 
-        onClick={connect}
-        className="gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-lg shadow-indigo-500/20 animate-pulse"
-      >
-        <Play className="w-4 h-4" />
-        Connect to Begin
-      </Button>
-    );
-  }
-
-  // On Map, Connected
+  // On Map
   return (
     <div className="flex items-center gap-2">
       <div className="text-sm text-slate-400 mr-2 hidden md:block">
