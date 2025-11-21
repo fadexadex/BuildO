@@ -15,6 +15,9 @@ import { useToast } from "@/components/ui/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ManualWalletConnect } from '../ManualWalletConnect';
+import { useWallet } from '@/contexts/WalletContext';
+import { CheckCircle, ExternalLink, XCircle } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -49,6 +52,16 @@ export function BuildPlayground() {
   const [isRunning, setIsRunning] = useState(false);
   const [provingSystem, setProvingSystem] = useState<'groth16' | 'plonk' | 'fflonk'>('groth16');
   
+  // Hedera State
+  const { accountId, privateKey, isConnected } = useWallet();
+  const [isVerifyingHedera, setIsVerifyingHedera] = useState(false);
+  const [hederaVerification, setHederaVerification] = useState<{
+    verified: boolean, 
+    explorerUrl: string, 
+    transactionId?: string,
+    contractId?: string
+  } | null>(null);
+
   // AI State
   const [isGenerating, setIsGenerating] = useState(false);
   const [prompt, setPrompt] = useState("");
@@ -162,6 +175,7 @@ export function BuildPlayground() {
           return;
       }
       setIsRunning(true);
+      setHederaVerification(null); // Reset previous verification
       setActiveTab("console");
       addLog("> Generating proof...");
       try {
@@ -198,6 +212,9 @@ export function BuildPlayground() {
                 addLog("> Proof generated successfully.");
                 addLog(`> Public Signals: ${JSON.stringify(res.publicSignals)}`);
                 toast({ title: "Proof Generated" });
+                
+                // Store proof for Hedera verification
+                setCompiledArtifacts((prev: any) => ({ ...prev, lastProof: res.proof, lastSignals: res.publicSignals }));
                 
                 // Update Visualization with values if possible
                 // (Requires mapping inputs back to nodes)
@@ -239,6 +256,74 @@ export function BuildPlayground() {
       } finally {
           setIsRunning(false);
       }
+  };
+
+  const handleHederaVerify = async () => {
+    if (!isConnected || !accountId || !privateKey) {
+        toast({ title: "Connect Wallet", description: "Please connect your Hedera wallet first", variant: "destructive" });
+        return;
+    }
+    if (!compiledArtifacts?.lastProof) {
+        toast({ title: "No Proof", description: "Generate a proof first", variant: "destructive" });
+        return;
+    }
+
+    setIsVerifyingHedera(true);
+    addLog("> Verifying on Hedera network...");
+    
+    try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/zk/verify-hedera`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                circuitName: 'custom',
+                proof: compiledArtifacts.lastProof,
+                publicSignals: compiledArtifacts.lastSignals,
+                accountId,
+                privateKey,
+                provingSystem
+            })
+        });
+        
+        const data = await res.json();
+        
+        if (data.success) {
+            if (data.verified) {
+                addLog(`> ✓ Proof verified on Hedera! Transaction: ${data.transactionId}`);
+                setHederaVerification({ 
+                    verified: true, 
+                    explorerUrl: data.explorerUrl,
+                    transactionId: data.transactionId,
+                    contractId: data.contractId
+                });
+                toast({ 
+                    title: "Proof Verified on Hedera", 
+                    description: "Your proof is valid and verified on-chain!" 
+                });
+            } else {
+                addLog(`> ✗ Proof verification failed on Hedera. Transaction: ${data.transactionId}`);
+                addLog(`> The proof is invalid - verification returned false.`);
+                setHederaVerification({ 
+                    verified: false, 
+                    explorerUrl: data.explorerUrl,
+                    transactionId: data.transactionId,
+                    contractId: data.contractId
+                });
+                toast({ 
+                    title: "Proof Invalid", 
+                    description: "Transaction submitted but proof verification failed",
+                    variant: "destructive"
+                });
+            }
+        } else {
+            throw new Error(data.error || "Transaction failed");
+        }
+    } catch (e: any) {
+        addLog(`> Hedera Transaction Error: ${e.message}`);
+        toast({ title: "Transaction Failed", description: e.message, variant: "destructive" });
+    } finally {
+        setIsVerifyingHedera(false);
+    }
   };
 
   const handleAiGenerate = async () => {
@@ -356,6 +441,9 @@ export function BuildPlayground() {
 
                  <Button size="sm" variant="ghost" className="text-slate-300 hover:bg-slate-800 hover:text-white"><Save className="w-4 h-4 mr-2" /> Save</Button>
                  
+                 <div className="h-6 w-px bg-slate-800 mx-2" />
+                 <ManualWalletConnect />
+                 
                  <Dialog>
                     <DialogTrigger asChild>
                         <Button size="icon" variant="ghost" className="text-slate-300 hover:bg-slate-800 hover:text-white ml-2" title="Guide"><HelpCircle className="w-4 h-4" /></Button>
@@ -400,6 +488,40 @@ export function BuildPlayground() {
                     {isRunning ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
                     Run Proof
                  </Button>
+
+                 {compiledArtifacts?.lastProof && (
+                    <Button 
+                        size="sm"
+                        variant="outline"
+                        className={`ml-2 ${
+                            hederaVerification === null 
+                                ? 'border-cyan-600 text-cyan-400 hover:bg-cyan-950/30' 
+                                : hederaVerification.verified 
+                                    ? 'border-green-600 text-green-400 bg-green-950/30 hover:bg-green-950/50' 
+                                    : 'border-red-600 text-red-400 bg-red-950/30 hover:bg-red-950/50'
+                        }`}
+                        onClick={hederaVerification ? () => window.open(hederaVerification.explorerUrl, '_blank') : handleHederaVerify}
+                        disabled={isVerifyingHedera}
+                    >
+                        {isVerifyingHedera ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : hederaVerification ? (
+                            hederaVerification.verified ? (
+                                <CheckCircle className="w-4 h-4 mr-2" />
+                            ) : (
+                                <XCircle className="w-4 h-4 mr-2" />
+                            )
+                        ) : (
+                            <img src="https://cryptologos.cc/logos/hedera-hbar-logo.png?v=035" className="w-4 h-4 mr-2 filter brightness-0 invert" alt="Hedera" />
+                        )}
+                        {hederaVerification === null 
+                            ? "Verify on Hedera" 
+                            : hederaVerification.verified 
+                                ? "Verified ✓" 
+                                : "Invalid Proof ✗"}
+                        {hederaVerification && <ExternalLink className="w-3 h-3 ml-2 opacity-50" />}
+                    </Button>
+                 )}
             </div>
         </div>
         

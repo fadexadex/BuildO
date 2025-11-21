@@ -34,6 +34,7 @@ import {
 import { audioSystem } from "@/lib/audio-system";
 import { toggleHaptics } from "@/lib/haptics";
 import { LevelWrapper } from "./LevelWrapper";
+import { ManualWalletConnect } from "@/components/ManualWalletConnect";
 
 // Dynamic imports for levels
 const ColorGame = dynamic(() => import("./levels/ColorGame"));
@@ -322,20 +323,7 @@ export function GameShell() {
 
                 {/* Wallet Connect - Hidden in Build Mode */}
                 {mode !== 'build' && (
-                <Button
-                  variant={isConnected ? "outline" : "default"}
-                  className={isConnected 
-                    ? "border-cyan-500/50 text-cyan-400 bg-cyan-950/10 hover:bg-cyan-950/50 min-w-[140px]" 
-                    : "bg-indigo-600 hover:bg-indigo-500 text-white min-w-[140px]"
-                  }
-                  onClick={isConnected ? disconnect : connect}
-                >
-                  {isConnected && accountId ? (
-                    <span className="font-mono">{accountId.slice(0, 6)}...{accountId.slice(-4)}</span>
-                  ) : (
-                    "Connect Wallet"
-                  )}
-                </Button>
+                  <ManualWalletConnect />
                 )}
 
                 {/* Settings */}

@@ -33,7 +33,7 @@ export async function submitProofToHedera(
   request: ProofSubmissionRequest
 ): Promise<ProofSubmissionResponse> {
   try {
-    const response = await fetch(`${API_BASE}/api/zk/submit-proof`, {
+    const response = await fetch(`${API_BASE}/zk/submit-proof`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -59,7 +59,7 @@ export async function getLeaderboard(
   limit: number = 50
 ): Promise<LeaderboardEntry[]> {
   try {
-    const response = await fetch(`${API_BASE}/api/zk/leaderboard?limit=${limit}`);
+    const response = await fetch(`${API_BASE}/zk/leaderboard?limit=${limit}`);
 
     if (!response.ok) {
       throw new Error(`Failed to fetch leaderboard: ${response.statusText}`);
@@ -77,7 +77,7 @@ export async function getLeaderboard(
  */
 export async function initializeHederaTopic(): Promise<{ topicId: string }> {
   try {
-    const response = await fetch(`${API_BASE}/api/zk/initialize-topic`, {
+    const response = await fetch(`${API_BASE}/zk/initialize-topic`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

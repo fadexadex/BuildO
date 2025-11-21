@@ -310,7 +310,7 @@ export function Leaderboard({ onClose }: LeaderboardProps) {
     async function fetchLeaderboard() {
       try {
         setLoading(true);
-        const response = await fetch("/api/zk/leaderboard?limit=50");
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/zk/leaderboard?limit=50`);
         if (!response.ok) {
           throw new Error("Failed to fetch leaderboard");
         }
