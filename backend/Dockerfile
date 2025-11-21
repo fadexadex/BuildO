@@ -1,15 +1,16 @@
 # Dockerfile for ZK Quest Backend
-FROM node:20-alpine
+FROM node:20-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (needed for native modules)
-RUN apk add --no-cache \
+# Install system dependencies (needed for native modules and circom)
+RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
-    curl
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
 COPY package*.json ./
