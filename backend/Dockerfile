@@ -1,5 +1,5 @@
 # Dockerfile for ZK Quest Backend
-FROM node:18-alpine
+FROM node:20-alpine
 
 # Set working directory
 WORKDIR /app
@@ -13,6 +13,9 @@ RUN apk add --no-cache \
 
 # Copy package files
 COPY package*.json ./
+
+# Copy scripts directory (needed for postinstall hook)
+COPY scripts ./scripts
 
 # Install npm dependencies (this will also install Circom automatically via postinstall)
 RUN npm ci --only=production

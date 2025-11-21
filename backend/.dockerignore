@@ -1,6 +1,5 @@
 node_modules
 npm-debug.log
-bin/
 .env
 .env.local
 .git
@@ -10,6 +9,6 @@ README.md
 .DS_Store
 zk-workspace/circuits/*
 zk-workspace/artifacts/*
-!zk-workspace/circuits/.gitkeep
-!zk-workspace/artifacts/.gitkeep
+!zk-workspace/circuits/*.circom
+zk-workspace/ptau/*
 
