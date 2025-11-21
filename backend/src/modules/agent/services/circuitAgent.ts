@@ -20,9 +20,9 @@ export async function handleCircuitDesign(request: CircuitAgentRequest) {
   }
 
   const llm = new ChatGroq({
-    model: 'llama-3.1-8b-instant', // Using Llama 3 for better coding capabilities
+    model: 'llama-3.3-70b-versatile', // Using Llama 3 for better coding capabilities
     apiKey: process.env.GROQ_API_KEY,
-    temperature: 0.2,
+    temperature: 0.1,
   });
 
   let systemPrompt = '';

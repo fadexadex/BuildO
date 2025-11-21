@@ -6,6 +6,7 @@ import { getHederaService } from "./services/hedera-proof-submitter.js";
 import * as snarkjs from 'snarkjs';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 // @ts-ignore - solc types might be missing
 import solc from 'solc';
 
@@ -539,19 +540,33 @@ export class ZkController {
       console.log(`Verifying on Hedera for circuit: ${circuitName}`);
       const hederaService = getHederaService();
       
-      // 1. Check for existing contract
-      let contractId = this.getStoredContractId(circuitName);
+      // Get circuit paths and verification key
+      const paths = this.proofGenerator.getCircuitPaths(circuitName);
+      if (!paths.zkey || !fs.existsSync(paths.zkey)) {
+         return res.status(400).json({ error: "Circuit zkey not found. Please compile and setup first." });
+      }
       
-      // 2. Deploy if needed
-      if (!contractId) {
-        console.log("No verifier contract found, deploying...");
-        
-        // Get zkey path
-        const paths = this.proofGenerator.getCircuitPaths(circuitName);
-        if (!paths.zkey || !fs.existsSync(paths.zkey)) {
-           return res.status(400).json({ error: "Circuit zkey not found. Please compile and setup first." });
+      // Read current verification key and compute its hash
+      const vKey = JSON.parse(fs.readFileSync(paths.vkey, 'utf8'));
+      const vKeyHash = crypto.createHash('sha256').update(JSON.stringify(vKey)).digest('hex');
+      
+      // 1. Check for existing contract and its verification key hash
+      const contractData = this.getStoredContractData(circuitName);
+      let contractId = contractData?.contractId;
+      const storedVKeyHash = contractData?.vKeyHash;
+      
+      // 2. Deploy if needed (no contract or verification key changed)
+      const needsRedeploy = !contractId || !storedVKeyHash || storedVKeyHash !== vKeyHash;
+      
+      if (needsRedeploy) {
+        if (!contractId) {
+          console.log("No verifier contract found, deploying...");
+        } else {
+          console.log("Verification key changed, redeploying verifier contract...");
+          console.log(`Old vKey hash: ${storedVKeyHash}`);
+          console.log(`New vKey hash: ${vKeyHash}`);
         }
-
+        
         // Export solidity verifier
         // We manually load the template to avoid issues with snarkjs default template loading
         const templatePath = path.resolve(process.cwd(), 'node_modules', 'snarkjs', 'templates', 'verifier_groth16.sol.ejs');
@@ -583,16 +598,15 @@ export class ZkController {
           privateKey
         );
         
-        // Save contract ID
-        this.saveContractId(circuitName, contractId);
+        // Save contract ID with verification key hash
+        this.saveContractData(circuitName, contractId, vKeyHash);
       }
       
       console.log(`Using verifier contract: ${contractId}`);
       
       // 2.5. Verify proof locally first (sanity check)
       console.log('=== Verifying proof locally first ===');
-      const paths = this.proofGenerator.getCircuitPaths(circuitName);
-      const vKey = JSON.parse(fs.readFileSync(paths.vkey, 'utf8'));
+      // vKey was already loaded earlier, reuse it
       const localVerification = await snarkjs.groth16.verify(vKey, publicSignals, proof);
       console.log('Local verification result:', localVerification);
       
@@ -651,37 +665,51 @@ export class ZkController {
     }
   }
 
-  // Helper: Get stored contract ID
-  private getStoredContractId(circuitName: string): string | null {
+  // Helper: Get stored contract data (ID and verification key hash)
+  private getStoredContractData(circuitName: string): { contractId: string; vKeyHash: string } | null {
     try {
       const contractsPath = path.join(process.cwd(), 'zk-workspace', 'contracts.json');
       if (!fs.existsSync(contractsPath)) return null;
       
       const data = fs.readFileSync(contractsPath, 'utf-8');
       const contracts = JSON.parse(data);
-      return contracts[circuitName] || null;
+      const contractData = contracts[circuitName];
+      
+      // Support legacy format (just string) and new format (object with contractId and vKeyHash)
+      if (typeof contractData === 'string') {
+        return { contractId: contractData, vKeyHash: '' };
+      }
+      
+      return contractData || null;
     } catch (e) {
       return null;
     }
   }
   
-  // Helper: Save contract ID
-  private saveContractId(circuitName: string, contractId: string) {
+  // Helper: Get stored contract ID (legacy compatibility)
+  private getStoredContractId(circuitName: string): string | null {
+    const data = this.getStoredContractData(circuitName);
+    return data?.contractId || null;
+  }
+  
+  // Helper: Save contract data (ID and verification key hash)
+  private saveContractData(circuitName: string, contractId: string, vKeyHash: string) {
     try {
       const workspace = path.join(process.cwd(), 'zk-workspace');
       if (!fs.existsSync(workspace)) fs.mkdirSync(workspace, { recursive: true });
       
       const contractsPath = path.join(workspace, 'contracts.json');
-      let contracts: Record<string, string> = {};
+      let contracts: Record<string, any> = {};
       
       if (fs.existsSync(contractsPath)) {
         contracts = JSON.parse(fs.readFileSync(contractsPath, 'utf-8'));
       }
       
-      contracts[circuitName] = contractId;
+      contracts[circuitName] = { contractId, vKeyHash };
       fs.writeFileSync(contractsPath, JSON.stringify(contracts, null, 2));
+      console.log(`Saved contract data for ${circuitName}: ${contractId} (vKey hash: ${vKeyHash.substring(0, 16)}...)`);
     } catch (e) {
-      console.error("Failed to save contract ID:", e);
+      console.error("Failed to save contract data:", e);
     }
   }
   

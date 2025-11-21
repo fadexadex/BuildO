@@ -133,15 +133,21 @@ export class HederaProofSubmitter {
         console.log('Contract ID:', contractId);
         console.log('Public Signals:', publicSignals);
         
-        // Use ethers.js to properly encode the parameters with correct ABI
-        // IMPORTANT: Standard snarkjs verifier uses uint256[] (dynamic array), NOT uint[N] (fixed-size)
-        // The contract expects: verifyProof(uint256[2] _pA, uint256[2][2] _pB, uint256[2] _pC, uint256[] _pubSignals)
+        if (!Array.isArray(publicSignals)) {
+          throw new Error('Public signals must be provided for on-chain verification');
+        }
+
+        const pubSignalsLength = publicSignals.length;
+
+        // SnarkJS-generated verifier contracts use fixed-size arrays for public signals, eg. uint[1]
+        // Build the exact ABI signature that matches the compiled contract to avoid decoding issues
+        const pubSignalsType = `uint256[${pubSignalsLength}]`;
         const abi = [
-          `function verifyProof(uint256[2] calldata _pA, uint256[2][2] calldata _pB, uint256[2] calldata _pC, uint256[] calldata _pubSignals) public view returns (bool)`
+          `function verifyProof(uint256[2] calldata _pA, uint256[2][2] calldata _pB, uint256[2] calldata _pC, ${pubSignalsType} calldata _pubSignals) public view returns (bool)`
         ];
-        
+
         console.log('Using ABI:', abi[0]);
-        
+
         const iface = new ethers.Interface(abi);
         
         // Encode the full call data (includes function selector + parameters)
@@ -150,19 +156,20 @@ export class HederaProofSubmitter {
         console.log('Encoded calldata length:', encodedData.length);
         console.log('Function selector:', encodedData.slice(0, 10));
         
-        // Remove '0x' prefix to get hex string, then convert to buffer
-        const calldataHex = encodedData.slice(2); // Remove '0x'
-        const calldataBuffer = Buffer.from(calldataHex, 'hex');
+        // For Hedera with complex nested arrays, we pass the full EVM-encoded calldata
+        // The calldata includes the function selector and properly ABI-encoded parameters
+        const calldataHex = encodedData.slice(2); // Remove '0x' prefix
+        const calldataBytes = Uint8Array.from(Buffer.from(calldataHex, 'hex'));
         
-        console.log('Calldata buffer size:', calldataBuffer.length, 'bytes');
+        console.log('Full EVM calldata size:', calldataBytes.length, 'bytes');
         
-        // For ContractExecuteTransaction, we pass the raw calldata bytes
-        // Hedera will use them as-is without adding another function selector
-        console.log('Executing transaction with raw calldata...');
+        // Use ContractExecuteTransaction with raw calldata
+        // When setFunction is not called, Hedera treats setFunctionParameters as raw EVM bytecode
+        console.log('Executing transaction with raw EVM calldata...');
         const tx = await new ContractExecuteTransaction()
           .setContractId(contractId)
           .setGas(1000000)
-          .setFunctionParameters(calldataBuffer as unknown as Uint8Array)
+          .setFunctionParameters(calldataBytes)
           .execute(client);
         
         const receipt = await tx.getReceipt(client);
@@ -171,33 +178,54 @@ export class HederaProofSubmitter {
         console.log('Transaction executed:', transactionId);
         console.log('Receipt status:', receipt.status.toString());
         
-        // For view functions executed as transactions, SUCCESS status means proof verified
-        // But let's also try to query the result to get the boolean return value
-        let verified = receipt.status.toString() === 'SUCCESS';
+        let verified: boolean | null = null;
         
         try {
-          console.log('Querying result...');
+          console.log('Fetching transaction record for function result...');
+          const record = await tx.getRecord(client);
+          const functionResult = record.contractFunctionResult;
+          
+          if (functionResult) {
+            verified = functionResult.getBool(0);
+            console.log('Transaction record result (verified):', verified);
+          } else {
+            console.warn('Transaction record did not include a contract function result');
+          }
+        } catch (recordError) {
+          console.error('Error fetching transaction record:', recordError);
+        }
+        
+        // If record lookup failed, fall back to a local query to read the bool
+        if (verified === null) {
+          // For view functions, we should query the result instead of executing a transaction
+          // Let's query to get the actual boolean return value
+          console.log('Querying verification result...');
           const callQuery = new ContractCallQuery()
             .setContractId(contractId)
-            .setGas(100000)
-            .setFunctionParameters(calldataBuffer as unknown as Uint8Array);
+            .setGas(300000) // match on-chain gas usage headroom
+            .setFunctionParameters(calldataBytes);
           
           const queryResult = await callQuery.execute(client);
           verified = queryResult.getBool(0);
           console.log('Query result (verified):', verified);
-        } catch (queryError) {
-          console.warn('Could not query result, using transaction status:', queryError instanceof Error ? queryError.message : 'Unknown error');
-          // Keep verified from transaction status
         }
+        
+        if (verified === null) {
+          console.warn('Unable to determine verification result from record or query, falling back to transaction status');
+          verified = receipt.status.toString() === 'SUCCESS';
+          console.log('Using transaction status for verification:', verified);
+        }
+
+        const finalVerified = verified ?? false;
         
         const network = this.client.networkName === 'mainnet' ? 'mainnet' : 'testnet';
         const explorerUrl = `https://hashscan.io/${network}/transaction/${transactionId}`;
         
-        console.log('✓ Verification completed:', { transactionId, verified, explorerUrl });
+        console.log('✓ Verification completed:', { transactionId, verified: finalVerified, explorerUrl });
         
         return {
             transactionId,
-            verified,
+            verified: finalVerified,
             explorerUrl
         };
 
