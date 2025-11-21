@@ -11,8 +11,9 @@ RUN apk add --no-cache \
     g++ \
     curl
 
-# Copy package files
+# Copy package files and setup scripts required during install
 COPY package*.json ./
+COPY scripts ./scripts
 
 # Install npm dependencies (this will also install Circom automatically via postinstall)
 RUN npm ci --only=production
