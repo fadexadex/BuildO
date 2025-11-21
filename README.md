@@ -1,196 +1,127 @@
-# BuildO - Hedera Blockchain Development Copilot
+# BuildO Frontend Feature Focus
 
-> An intelligent AI-powered playground and workspace for building on the Hedera blockchain network with real-time tool execution capabilities.
+> The BuildO UI now ships a story-driven zk quest and an on-device Circom lab—everything below captures what lives **entirely inside the Next.js frontend**.
 
-[![GitHub](https://img.shields.io/badge/GitHub-BuildO-blue?logo=github)](https://github.com/fadexadex/BuildO.git)
-[![TypeScript](https://img.shields.io/badge/TypeScript-96.7%25-blue?logo=typescript)](https://www.typescriptlang.org/)
-[![Hedera](https://img.shields.io/badge/Hedera-Testnet-purple)](https://hedera.com/)
-
-## 🚀 Live Demo
-
-**Live URL:** [Click Here!](https://build-o.vercel.app/)
-
-**Demo Video:** [Click Here!](https://youtu.be/cVV9ZzwM-zo?si=IboCFyC8q_BMhs_1)
+## Feature Map
+- `components/zk-quest/*` powers a three-world “ZK Quest” with XP, achievements, leaderboards, contextual tips, audio/haptics, and a React Three Fiber world map.
+- `components/build-mode/*` delivers a Monaco-based Circom IDE with AI circuit generation, 3D visual debugging, multi-proof runners, and Hedera verification from the browser.
+- `contexts/*`, `hooks/*`, and `lib/*` provide wallet wiring (AppKit + manual fallback), persistent game state, demo tooling, and performance instrumentation.
+- The frontend stands alone: you can run quests, build circuits, toggle demo showcases, and exercise wallet flows without touching backend docs.
 
 ---
 
-## 📋 Problem Statement
+## 1. ZK Quest Game Layer (`frontend/components/zk-quest`)
 
-Building on blockchain networks, especially Hedera, can be challenging for developers due to:
+### Multi-world zero-knowledge onboarding
+- `WorldMap.tsx` renders three themed worlds (visual proofs, circuit building, advanced apps) across **nine levels** defined in `lib/game-state.ts`.
+- Level unlock logic, XP payouts, ranks, and per-level telemetry persist locally through `hooks/use-game-state.ts` + `lib/game-state.ts`, so reloads keep progress.
+- Narratives (`data/level-narratives.ts`) and quiz data (`data/quiz-questions.ts`) plug into contextual overlays to keep each concept self-contained in the UI.
 
-- **Complex SDK Integration**: Understanding and implementing Hedera SDK operations requires extensive documentation reading
-- **Testing Friction**: Setting up test environments and managing testnet accounts is time-consuming
-- **Code Experimentation**: Lack of interactive playgrounds for rapid prototyping and testing
-- **Learning Curve**: New developers struggle with blockchain concepts and Hedera-specific implementations
-- **Workflow Inefficiency**: Switching between documentation, code editors, and testing environments breaks development flow
+### Level-specific experiences
+- Each level is dynamically imported (see `GameShell.tsx` lines 37-47) and can host bespoke mechanics: e.g., `levels/RangeProver.tsx` for constraint authoring or `levels/AnonymousVoting.tsx` for batching.
+- `LevelWrapper.tsx` standardizes timers, XP hand-offs, celebratory confetti, toast messaging, and proof hash capture per level.
+- `ContextualNav.tsx` surfaces inline docs, cheat-sheets, and quick actions tied to the active level without any backend routing.
 
-**BuildO solves these problems by providing:**
-- 🤖 **AI-Powered Assistant** with access to real Hedera tools for instant blockchain operations
-- 🛠️ **Interactive Workspace** for writing, testing, and executing Hedera code in real-time
-- 📚 **Intelligent Code Generation** that understands Hedera best practices and generates production-ready code
-- 🔄 **Seamless Code Merging** that intelligently integrates AI suggestions into your existing codebase
-- ⚡ **Live Execution Environment** connected directly to Hedera Testnet
+### Social, guidance, and retention overlays
+- `AchievementGallery.tsx`, `Leaderboard.tsx`, and `DemoControls.tsx` provide achievements, remote leaderboard fetches (with graceful fallback when offline), and a demo mode you can toggle mid-session.
+- `GameShell.tsx` embeds **mode toggles (Quest vs Build)**, XP progress rings, keyboard shortcuts (⌘/Ctrl + P for performance stats, +A for achievements), haptics toggles, mute switches, and contextual instructions.
+- `WorldMap.tsx` + `LevelNarratives` include hover tooltips (completion times, attempts) and animated markers so players understand what changed after each attempt.
 
----
-
-## ✨ Key Features
-
-### 🤖 **Intelligent Agent Mode**
-- Real-time execution of Hedera operations (HTS tokens, consensus topics, transfers)
-- AI assistant with deep knowledge of Hedera SDK and best practices
-- Automatic transaction confirmation and HashScan integration
-- Smart error handling and debugging assistance
-
-### 🛠️ **Interactive Workspace**
-- Monaco code editor with syntax highlighting and error detection
-- One-click code execution on Hedera Testnet
-- Intelligent code merging from AI suggestions
-- Account management with secure credential handling
-
-### 🔧 **Supported Operations**
-- **HTS (Token Service)**: Create fungible/non-fungible tokens, minting, airdrops
-- **Account Operations**: HBAR transfers, balance queries, account information
-- **Consensus Service**: Topic creation, message submission and querying
-- **Smart Contract Integration**: [Coming Soon]
+### Immersive feedback systems
+- `lib/audio-system.ts` preloads UI and celebratory sounds, throttles playback, and exposes telemetry consumed across Quest + Build modes.
+- `lib/haptics.ts` gates vibration APIs and is wired to the haptic toggle in `GameShell`.
+- `lib/performance.tsx` exposes a live FPS/memory HUD that users can open without devtools—useful when demoing on beefy 3D levels.
 
 ---
 
-## 🛠️ Technology Stack
+## 2. Build Mode Playground (`frontend/components/build-mode`)
 
-### Frontend
-- **Next.js 15** - React framework for production
-- **TypeScript** - Type-safe development
-- **Tailwind CSS** - Utility-first styling
-- **Monaco Editor** - VS Code-powered code editing
-- **Shadcn/UI** - Modern UI components
+### Monaco-first Circom editing
+- `CodeEditor.tsx` wraps `@monaco-editor/react`, preloads Circom syntax, and syncs with localStorage (`zk-quest-build-code`) so experiments survive refreshes.
+- Toolbar actions (`BuildPlayground.tsx`, lines 364-420) expose AI generation, compile/run buttons, circuit downloads, file uploads, and a proving-system selector (Groth16/Plonk/FFLONK).
 
-### Backend
-- **Node.js** - JavaScript runtime
-- **Express.js** - Web application framework
-- **LangChain** - AI agent orchestration
-- **Groq** - Fast LLM inference
-- **Hedera SDK** - Blockchain integration
+### Circuit visualization & debugging
+- `CircuitViz.tsx` + `lib/circuit-parser.ts` transform raw Circom into a **3D node graph** with animated data flow, input/array hints, and error coloring.
+- Selecting nodes highlights edges, displays live values, and animates arrays so you can visually debug constraint wiring entirely frontside.
 
-### Blockchain
-- **Hedera Testnet** - Decentralized network for testing
-- **Hedera Agent Kit** - Specialized tools for Hedera operations
+### Proof lifecycle automation
+- `BuildPlayground.tsx` orchestrates compile (`ZkAPI.compileCircuit`), proof generation, and optional Hedera on-chain verification straight from the UI.
+- Input handling auto-expands arrays, JSON-parses complex inputs, and streams logs into the in-app console to keep feedback co-located with the editor.
+- Proof + signal artifacts are cached inside the component state so the Hedera verification dialog can re-use them without re-running circuits.
+
+### Wallet-aware deployment helpers
+- `ManualWalletConnect.tsx` offers a “paste your Hedera testnet creds” fallback for dev/demo usage; credentials stay in-memory/localStorage and never leave the browser unless you run verification.
+- `useWallet` context (see `contexts/WalletContext.tsx`) normalizes status, gating compile/run/verify buttons based on connection state and exposing disconnect/reset UX.
+
+### AI-assisted circuit creation
+- `CircuitAgentAPI` hooks (defined in `lib/api.ts`) let you describe a circuit in natural language; `BuildPlayground` trims it to the Circom block and injects it straight into Monaco for iterative edits.
+- The AI dialog is optional and can be reopened anytime—perfect for quickly seeding templates before diving into manual editing.
 
 ---
 
-## 🚀 Installation & Setup
+## 3. Wallet & Connectivity Fabric
+
+- `contexts/AppKitContext.tsx` + `config/index.tsx` initialize **Reown AppKit + Wagmi** with Hedera testnet as the default network, hydration-safe storage, and analytics toggles.
+- `Providers.tsx` wraps every page with `AppKitProvider`, `ModeContext`, `WalletContext`, `GameStateProvider`, and `DemoModeProvider`, ensuring Quest + Build can read the same wallet/game/session state.
+- `ManualWalletConnect.tsx` coexists with AppKit modal triggers, so QA teams can switch between QR-based wallets and raw private keys without code changes.
+- The wallet fabric pipes account IDs into `use-game-state` (`linkHederaAccount`) so proof completions and quest progress can attribute on-chain work to a specific Hedera account entirely on the client.
+
+---
+
+## 4. Frontend Systems & Tooling
+
+- **State Persistence:** `lib/game-state.ts` version-stamps localStorage blobs, migrates when schemas change, deduplicates achievements, and keeps completion times/XPs in sync.
+- **Demo / Presenter Tools:** `hooks/use-demo-mode.tsx`, `components/zk-quest/DemoControls.tsx`, and `hooks/use-card-position.ts` enable cinematic camera paths, auto-progress, and card animations for live demos.
+- **UI Kit:** `components/ui/*` contains the Shadcn-initialized system (Radix primitives + Tailwind design tokens) so all Quest + Build widgets share theming, focus states, and accessibility defaults.
+- **Utilities:** `lib/audio-system.ts`, `lib/haptics.ts`, `lib/utils.ts`, and `lib/performance.tsx` centralize sensory + telemetry helpers so both gameplay and build tooling stay consistent.
+
+---
+
+## Trying the Frontend Locally
 
 ### Prerequisites
-- **Node.js** (v18 or higher)
-- **npm** or **yarn**
-- **Git**
-- **Hedera Testnet Account** (Get free testnet HBAR from [Hedera Portal](https://portal.hedera.com/))
-- **Groq API Key** (Get from [Groq Console](https://console.groq.com/))
+- Node.js 18+
+- npm (ships with Node)  
+- Hedera testnet account (for wallet + verification flows)  
+- A Reown/AppKit project ID (public, used only on the client)
 
-### 1. Clone the Repository
-```bash
-git clone https://github.com/fadexadex/BuildO.git
-cd BuildO
-```
-
-### 2. Backend Setup
-```bash
-# Navigate to backend directory
-cd backend
-
-# Install dependencies
-npm install
-
-# Create environment file
-cp .env.example .env
-
-# Edit .env file with your credentials
-nano .env
-```
-
-**Backend Environment Variables (.env):**
-```env
-# Groq API Configuration
-GROQ_API_KEY=your_groq_api_key_here
-
-# Server Configuration
-PORT=3001
-NODE_ENV=development
-
-# CORS Configuration (for frontend)
-FRONTEND_URL=http://localhost:3000
-```
-
-### 3. Frontend Setup
-```bash
-# Navigate to frontend directory (from project root)
-cd frontend
-
-# Install dependencies
-npm install
-
-# Create environment file (if needed)
-cp .env.local.example .env.local
-
-# Edit environment file
-nano .env.local
-```
-
-**Frontend Environment Variables (.env.local):**
-```env
-# Backend API URL
-NEXT_PUBLIC_API_URL=https://buildo-production-8398.up.railway.app
-
-# Optional: Analytics or other frontend configs
-```
-
-### 4. Start Development Servers
-
-**Terminal 1 - Backend:**
-```bash
-cd backend
-npm run dev
-```
-
-**Terminal 2 - Frontend:**
+### Setup
 ```bash
 cd frontend
+npm install
+
+# Required env vars
+cat <<'EOF' > .env.local
+NEXT_PUBLIC_PROJECT_ID=your_appkit_project_id
+NEXT_PUBLIC_API_URL=http://localhost:3001   # optional, defaults to 3001
+EOF
+
 npm run dev
 ```
+- `NEXT_PUBLIC_PROJECT_ID` is mandatory; `config/index.tsx` will throw during Next.js boot if it’s missing.
+- `NEXT_PUBLIC_API_URL` is optional; the UI falls back to `http://localhost:3001` for compile/proof/leaderboard calls.
+- All quest/game data stores in localStorage; delete the `zk-quest-*` keys to reset progress.
 
-### 5. Access the Application
-- **Frontend (Development):** http://localhost:3000
-- **Backend API (Development):** http://localhost:3001
-- **Production Frontend:** [https://buildo-production-8398.up.railway.app/](https://buildo-production-8398.up.railway.app/)
-- **Production Backend API:** https://buildo-production-8398.up.railway.app
+### Useful Scripts
+- `npm run dev` – launches Next.js 15 with the App Router and hot reload for both Quest + Build experiences.
+- `npm run lint` – runs `next lint` to validate the frontend-only TypeScript + ESLint ruleset before pushing UI changes.
+- `npm run build && npm run start` – production build to validate React Server Components, AppKit hydration, and dynamic imports.
 
 ---
 
-## 🔑 Getting Started
+## Directory Cheat Sheet
+- `frontend/components/zk-quest` – GameShell, WorldMap, levels, achievements, leaderboards, contextual nav, demo controls.
+- `frontend/components/build-mode` – BuildPlayground, Monaco editor, circuit visualizer, AI dialog, manual wallet connect.
+- `frontend/hooks` – `use-game-state`, `use-demo-mode`, `use-quiz-state`, `use-toast`, `use-appkit-wallet`, etc.
+- `frontend/contexts` – AppKit, wallet, and mode providers used at the app shell level.
+- `frontend/lib` – Hedera + circuit APIs, parsers, audio/haptics utilities, constants, performance overlay.
+- `frontend/data` – Narrative copy + quiz banks consumed by the quest without additional API calls.
 
-### 1. **Set Up Your Hedera Account**
-- Visit [Hedera Portal](https://portal.hedera.com/) to create a testnet account
-- Get free testnet HBAR for testing
-- Note down your Account ID and Private Key
+---
 
-### 2. **Connect to BuildO**
-- Open BuildO in your browser
-- Enter your Hedera testnet credentials
-- Click "Connect" to authenticate
+## What’s Next?
+- Hook new quest levels or achievements by editing `lib/game-state.ts` + `data/level-narratives.ts`—no backend migration required.
+- Extend the build lab by dropping new tools into `components/build-mode/*` (e.g., proof diffing, artifact download history).
+- Wire additional wallet flows (hashconnect, Ledger) inside `contexts/AppKitContext.tsx` once new adapters are available.
 
-### 3. **Try Agent Mode**
-- Ask the AI to perform Hedera operations like:
-  - "Create a fungible token called 'MyToken'"
-  - "Transfer 10 HBAR to account 0.0.123456"
-  - "Get my account balance"
-  - "Create a consensus topic for voting"
-
-### 4. **Use Workspace Mode**
-- Write custom Hedera code in the editor
-- Use "Add to Workspace" from agent suggestions
-- Use AI to automatically generate and apply code changes and fix bugs
-- Execute code directly on Hedera Testnet
-- View results in real-time
-
-
-
-
+This README now reflects the **frontend-only** feature surface so designers, PMs, and QA engineers can explore everything without digging through backend docs.

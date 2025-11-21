@@ -12,6 +12,9 @@ interface CircuitAgentRequest {
   code?: string;
 }
 
+const escapeForPromptTemplate = (text: string) =>
+  text.replace(/[{]/g, '{{').replace(/[}]/g, '}}');
+
 export async function handleCircuitDesign(request: CircuitAgentRequest) {
   const { action, prompt, code } = request;
 
@@ -46,7 +49,7 @@ export async function handleCircuitDesign(request: CircuitAgentRequest) {
   }
 
   const promptTemplate = ChatPromptTemplate.fromMessages([
-    ['system', systemPrompt],
+    ['system', escapeForPromptTemplate(systemPrompt)],
     ['human', '{input}'],
   ]);
 
