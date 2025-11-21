@@ -21,6 +21,11 @@ declare module 'snarkjs' {
       publicSignals: string[],
       proof: any
     ): Promise<boolean>;
+
+    function exportSolidityCallData(
+      proof: any,
+      publicSignals: string[]
+    ): Promise<string>;
   }
 
   export namespace plonk {
@@ -88,7 +93,10 @@ declare module 'snarkjs' {
 
     function exportVerificationKey(zkeyName: string): Promise<any>;
 
-    function exportSolidityVerifier(zkeyName: string): Promise<string>;
+    function exportSolidityVerifier(
+      zkeyName: string,
+      templates?: { [key: string]: string }
+    ): Promise<string>;
   }
 
   export namespace r1cs {

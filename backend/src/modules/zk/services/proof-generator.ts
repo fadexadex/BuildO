@@ -445,7 +445,7 @@ export class ProofGeneratorService {
   ): Promise<string> {
     const zkeyPath = path.join(this.zkeyDir, `${circuitName}_final.zkey`);
 
-    let shouldRegenerate = !existsSync(zkeyPath);
+   let shouldRegenerate = !existsSync(zkeyPath);
 
     if (!shouldRegenerate && existsSync(r1csPath)) {
       // Check if zkey is stale compared to R1CS

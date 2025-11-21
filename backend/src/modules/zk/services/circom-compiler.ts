@@ -206,7 +206,7 @@ export class CircomCompilerService {
       // Build relative path from output directory to circuit file
       const relativeCircuitPath = path.relative(outputDir, circuitPath);
       
-      // Add node_modules to include path
+    // Add node_modules to include path
       const nodeModulesPath = path.join(process.cwd(), 'node_modules');
       
       let compileCmd = `"${this.circomBinaryPath}" "${relativeCircuitPath}" --prime ${prime} -l "${nodeModulesPath}"`;

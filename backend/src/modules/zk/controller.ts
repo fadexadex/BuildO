@@ -3,6 +3,11 @@ import { getCircomCompilerService, formatCircomErrors } from "./services/circom-
 import { getProofGeneratorService, ProvingSystem } from "./services/proof-generator.js";
 import { getProofVerifierService } from "./services/proof-verifier.js";
 import { getHederaService } from "./services/hedera-proof-submitter.js";
+import * as snarkjs from 'snarkjs';
+import * as fs from 'fs';
+import * as path from 'path';
+// @ts-ignore - solc types might be missing
+import solc from 'solc';
 
 /**
  * ZK Controller
@@ -516,6 +521,212 @@ export class ZkController {
   }
 
   // ==================== Hedera Integration Endpoints ====================
+
+  /**
+   * POST /zk/verify-hedera
+   * Verify proof on Hedera network
+   */
+  async verifyOnHedera(req: Request, res: Response) {
+    try {
+      const { circuitName, proof, publicSignals, accountId, privateKey, provingSystem = "groth16" } = req.body;
+
+      if (!circuitName || !proof || !publicSignals || !accountId || !privateKey) {
+        return res.status(400).json({
+          error: "Missing required fields: circuitName, proof, publicSignals, accountId, privateKey",
+        });
+      }
+
+      console.log(`Verifying on Hedera for circuit: ${circuitName}`);
+      const hederaService = getHederaService();
+      
+      // 1. Check for existing contract
+      let contractId = this.getStoredContractId(circuitName);
+      
+      // 2. Deploy if needed
+      if (!contractId) {
+        console.log("No verifier contract found, deploying...");
+        
+        // Get zkey path
+        const paths = this.proofGenerator.getCircuitPaths(circuitName);
+        if (!paths.zkey || !fs.existsSync(paths.zkey)) {
+           return res.status(400).json({ error: "Circuit zkey not found. Please compile and setup first." });
+        }
+
+        // Export solidity verifier
+        // We manually load the template to avoid issues with snarkjs default template loading
+        const templatePath = path.resolve(process.cwd(), 'node_modules', 'snarkjs', 'templates', 'verifier_groth16.sol.ejs');
+        let templates = undefined;
+        
+        if (fs.existsSync(templatePath)) {
+            const templateContent = fs.readFileSync(templatePath, 'utf-8');
+            templates = { groth16: templateContent };
+        }
+
+        const verifierCode = await snarkjs.zKey.exportSolidityVerifier(paths.zkey, templates);
+        
+        console.log("Generated Verifier Code Length:", verifierCode.length);
+        console.log('=== Verifier Contract (first 500 chars) ===');
+        console.log(verifierCode.substring(0, 500));
+        console.log('=== Searching for verifyProof function signature ===');
+        const verifyProofMatch = verifierCode.match(/function verifyProof\([^)]+\)/);
+        if (verifyProofMatch) {
+          console.log('Found signature:', verifyProofMatch[0]);
+        }
+        
+        // Compile solidity
+        const compiled = this.compileSolidity(verifierCode, provingSystem);
+        
+        // Deploy
+        contractId = await hederaService.deployVerifierContract(
+          compiled.bytecode,
+          accountId,
+          privateKey
+        );
+        
+        // Save contract ID
+        this.saveContractId(circuitName, contractId);
+      }
+      
+      console.log(`Using verifier contract: ${contractId}`);
+      
+      // 2.5. Verify proof locally first (sanity check)
+      console.log('=== Verifying proof locally first ===');
+      const paths = this.proofGenerator.getCircuitPaths(circuitName);
+      const vKey = JSON.parse(fs.readFileSync(paths.vkey, 'utf8'));
+      const localVerification = await snarkjs.groth16.verify(vKey, publicSignals, proof);
+      console.log('Local verification result:', localVerification);
+      
+      if (!localVerification) {
+        return res.status(400).json({
+          error: "Invalid proof",
+          details: "The proof failed local verification. Cannot proceed with on-chain verification."
+        });
+      }
+      
+      // 3. Prepare calldata
+      // Export call data for solidity
+      const calldata = await snarkjs.groth16.exportSolidityCallData(proof, publicSignals);
+      
+      console.log('=== Raw Calldata from snarkjs ===');
+      console.log(calldata.substring(0, 200));
+      
+      // Parse calldata into components
+      // Output format: "[a], [b], [c], [input]" (as string)
+      // We need to parse this JSON-like string
+      const parsedParams = JSON.parse(`[${calldata}]`);
+      const [a, b, c, inputs] = parsedParams;
+      
+      console.log('=== Parsed Parameters ===');
+      console.log('a:', JSON.stringify(a));
+      console.log('b:', JSON.stringify(b));
+      console.log('c:', JSON.stringify(c));
+      console.log('inputs:', JSON.stringify(inputs));
+      
+      // 4. Verify on-chain
+      const result = await hederaService.verifyProofOnChain(
+        contractId,
+        a,
+        b,
+        c,
+        inputs,
+        accountId,
+        privateKey
+      );
+      
+      res.json({
+        success: true,
+        verified: result.verified,
+        contractId,
+        transactionId: result.transactionId,
+        explorerUrl: result.explorerUrl,
+        network: 'testnet' // dynamic based on client?
+      });
+      
+    } catch (error) {
+      console.error("Hedera verification error:", error);
+      res.status(500).json({
+        error: "Failed to verify on Hedera",
+        details: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  // Helper: Get stored contract ID
+  private getStoredContractId(circuitName: string): string | null {
+    try {
+      const contractsPath = path.join(process.cwd(), 'zk-workspace', 'contracts.json');
+      if (!fs.existsSync(contractsPath)) return null;
+      
+      const data = fs.readFileSync(contractsPath, 'utf-8');
+      const contracts = JSON.parse(data);
+      return contracts[circuitName] || null;
+    } catch (e) {
+      return null;
+    }
+  }
+  
+  // Helper: Save contract ID
+  private saveContractId(circuitName: string, contractId: string) {
+    try {
+      const workspace = path.join(process.cwd(), 'zk-workspace');
+      if (!fs.existsSync(workspace)) fs.mkdirSync(workspace, { recursive: true });
+      
+      const contractsPath = path.join(workspace, 'contracts.json');
+      let contracts: Record<string, string> = {};
+      
+      if (fs.existsSync(contractsPath)) {
+        contracts = JSON.parse(fs.readFileSync(contractsPath, 'utf-8'));
+      }
+      
+      contracts[circuitName] = contractId;
+      fs.writeFileSync(contractsPath, JSON.stringify(contracts, null, 2));
+    } catch (e) {
+      console.error("Failed to save contract ID:", e);
+    }
+  }
+  
+  // Helper: Compile Solidity
+  private compileSolidity(source: string, provingSystem: string) {
+    // Standard compiler input
+    const input = {
+        language: 'Solidity',
+        sources: {
+            'Verifier.sol': {
+                content: source
+            }
+        },
+        settings: {
+            outputSelection: {
+                '*': {
+                    '*': ['abi', 'evm.bytecode']
+                }
+            }
+        }
+    };
+
+    const output = JSON.parse(solc.compile(JSON.stringify(input)));
+    
+    if (output.errors) {
+        const errors = output.errors.filter((e: any) => e.severity === 'error');
+        if (errors.length > 0) {
+            throw new Error(`Solidity compilation failed: ${errors[0].message}`);
+        }
+    }
+
+    const contractName = provingSystem === 'plonk' ? 'PlonkVerifier' : 'Groth16Verifier';
+    // Note: The template usually exports 'Verifier' or similar. 
+    // For Groth16 default template, it is 'Groth16Verifier' but check output keys
+    
+    // To be safe, take the first contract
+    const contracts = output.contracts['Verifier.sol'];
+    const contractKey = Object.keys(contracts).find(k => k.includes('Verifier')) || Object.keys(contracts)[0];
+    const contract = contracts[contractKey];
+    
+    return {
+        abi: contract.abi,
+        bytecode: contract.evm.bytecode.object
+    };
+  }
 
   /**
    * POST /zk/submit-to-hedera

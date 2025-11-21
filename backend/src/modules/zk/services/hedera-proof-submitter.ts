@@ -9,8 +9,13 @@ import {
   TokenSupplyType,
   TokenMintTransaction,
   TransferTransaction,
-  Hbar
+  Hbar,
+  ContractCreateFlow,
+  ContractExecuteTransaction,
+  ContractCallQuery,
+  ContractFunctionParameters
 } from '@hashgraph/sdk';
+import { ethers } from 'ethers';
 
 /**
  * Hedera Proof Submitter Service
@@ -19,8 +24,8 @@ import {
  */
 
 interface HederaConfig {
-  operatorId: string;
-  operatorKey: string;
+  operatorId?: string;
+  operatorKey?: string;
   network: 'testnet' | 'mainnet';
 }
 
@@ -41,8 +46,8 @@ interface NFTMetadata {
 
 export class HederaProofSubmitter {
   private client: Client;
-  private operatorId: AccountId;
-  private operatorKey: PrivateKey;
+  private operatorId?: AccountId;
+  private operatorKey?: PrivateKey;
   private topicId: string | null = null;
   private achievementTokenIds: Map<string, string> = new Map();
 
@@ -54,10 +59,161 @@ export class HederaProofSubmitter {
       this.client = Client.forMainnet();
     }
 
-    this.operatorId = AccountId.fromString(config.operatorId);
-    this.operatorKey = PrivateKey.fromString(config.operatorKey);
+    if (config.operatorId && config.operatorKey) {
+      this.operatorId = AccountId.fromString(config.operatorId);
+      this.operatorKey = PrivateKey.fromString(config.operatorKey);
+      this.client.setOperator(this.operatorId, this.operatorKey);
+    }
+  }
 
-    this.client.setOperator(this.operatorId, this.operatorKey);
+  /**
+   * Create a client from user credentials
+   */
+  private createUserClient(accountId: string, privateKey: string): Client {
+    const client = this.client.networkName === 'mainnet' ? Client.forMainnet() : Client.forTestnet();
+    client.setOperator(AccountId.fromString(accountId), PrivateKey.fromString(privateKey));
+    return client;
+  }
+
+  /**
+   * Deploy a verifier contract to Hedera
+   */
+  async deployVerifierContract(
+    bytecode: string,
+    accountId: string,
+    privateKey: string
+  ): Promise<string> {
+    let client: Client | null = null;
+    try {
+      client = this.createUserClient(accountId, privateKey);
+
+      console.log(`Deploying verifier contract for account ${accountId}...`);
+
+      // Use ContractCreateFlow for automatic file creation if bytecode is large
+      const transaction = new ContractCreateFlow()
+        .setBytecode(bytecode)
+        .setGas(1000000); // Set enough gas for deployment
+
+      const txResponse = await transaction.execute(client);
+      const receipt = await txResponse.getReceipt(client);
+      
+      const contractId = receipt.contractId?.toString();
+      
+      if (!contractId) {
+        throw new Error('Failed to deploy verifier contract');
+      }
+
+      console.log(`Verifier contract deployed: ${contractId}`);
+      return contractId;
+    } catch (error) {
+      console.error('Error deploying verifier contract:', error);
+      throw error;
+    } finally {
+      if (client) client.close();
+    }
+  }
+
+  /**
+   * Verify a proof on-chain using the deployed verifier contract
+   */
+  async verifyProofOnChain(
+    contractId: string,
+    a: string[],
+    b: string[][],
+    c: string[],
+    publicSignals: string[],
+    accountId: string,
+    privateKey: string
+  ): Promise<{ transactionId: string; verified: boolean; explorerUrl: string }> {
+      let client: Client | null = null;
+      try {
+        client = this.createUserClient(accountId, privateKey);
+        
+        console.log('=== Verifying Proof On-Chain ===');
+        console.log('Contract ID:', contractId);
+        console.log('Public Signals:', publicSignals);
+        
+        // Use ethers.js to properly encode the parameters with correct ABI
+        // IMPORTANT: Standard snarkjs verifier uses uint256[] (dynamic array), NOT uint[N] (fixed-size)
+        // The contract expects: verifyProof(uint256[2] _pA, uint256[2][2] _pB, uint256[2] _pC, uint256[] _pubSignals)
+        const abi = [
+          `function verifyProof(uint256[2] calldata _pA, uint256[2][2] calldata _pB, uint256[2] calldata _pC, uint256[] calldata _pubSignals) public view returns (bool)`
+        ];
+        
+        console.log('Using ABI:', abi[0]);
+        
+        const iface = new ethers.Interface(abi);
+        
+        // Encode the full call data (includes function selector + parameters)
+        const encodedData = iface.encodeFunctionData("verifyProof", [a, b, c, publicSignals]);
+        
+        console.log('Encoded calldata length:', encodedData.length);
+        console.log('Function selector:', encodedData.slice(0, 10));
+        
+        // Remove '0x' prefix to get hex string, then convert to buffer
+        const calldataHex = encodedData.slice(2); // Remove '0x'
+        const calldataBuffer = Buffer.from(calldataHex, 'hex');
+        
+        console.log('Calldata buffer size:', calldataBuffer.length, 'bytes');
+        
+        // For ContractExecuteTransaction, we pass the raw calldata bytes
+        // Hedera will use them as-is without adding another function selector
+        console.log('Executing transaction with raw calldata...');
+        const tx = await new ContractExecuteTransaction()
+          .setContractId(contractId)
+          .setGas(1000000)
+          .setFunctionParameters(calldataBuffer as unknown as Uint8Array)
+          .execute(client);
+        
+        const receipt = await tx.getReceipt(client);
+        const transactionId = tx.transactionId.toString();
+        
+        console.log('Transaction executed:', transactionId);
+        console.log('Receipt status:', receipt.status.toString());
+        
+        // For view functions executed as transactions, SUCCESS status means proof verified
+        // But let's also try to query the result to get the boolean return value
+        let verified = receipt.status.toString() === 'SUCCESS';
+        
+        try {
+          console.log('Querying result...');
+          const callQuery = new ContractCallQuery()
+            .setContractId(contractId)
+            .setGas(100000)
+            .setFunctionParameters(calldataBuffer as unknown as Uint8Array);
+          
+          const queryResult = await callQuery.execute(client);
+          verified = queryResult.getBool(0);
+          console.log('Query result (verified):', verified);
+        } catch (queryError) {
+          console.warn('Could not query result, using transaction status:', queryError instanceof Error ? queryError.message : 'Unknown error');
+          // Keep verified from transaction status
+        }
+        
+        const network = this.client.networkName === 'mainnet' ? 'mainnet' : 'testnet';
+        const explorerUrl = `https://hashscan.io/${network}/transaction/${transactionId}`;
+        
+        console.log('✓ Verification completed:', { transactionId, verified, explorerUrl });
+        
+        return {
+            transactionId,
+            verified,
+            explorerUrl
+        };
+
+      } catch (error: any) {
+        console.error('Error executing verifier contract:', error);
+        
+        // Check if it's a contract revert (status code 33 = CONTRACT_REVERT_EXECUTED)
+        if (error.status?._code === 33) {
+          console.error('Contract reverted - proof verification failed on-chain');
+          throw new Error('Proof verification failed on-chain (contract reverted)');
+        }
+        
+        throw error;
+      } finally {
+        if (client) client.close();
+      }
   }
 
   /**
@@ -173,7 +329,7 @@ export class HederaProofSubmitter {
 
       const transaction = new TokenMintTransaction()
         .setTokenId(tokenId)
-        .setMetadata([metadataBytes]);
+        .setMetadata([metadataBytes as unknown as Uint8Array]);
 
       const txResponse = await transaction.execute(this.client);
       const receipt = await txResponse.getReceipt(this.client);
@@ -396,15 +552,12 @@ let hederaService: HederaProofSubmitter | null = null;
 export function getHederaService(): HederaProofSubmitter {
   if (!hederaService) {
     const config: HederaConfig = {
-      operatorId: process.env.HEDERA_OPERATOR_ID || '',
-      operatorKey: process.env.HEDERA_OPERATOR_KEY || '',
+      operatorId: process.env.HEDERA_OPERATOR_ID,
+      operatorKey: process.env.HEDERA_OPERATOR_KEY,
       network: (process.env.HEDERA_NETWORK as 'testnet' | 'mainnet') || 'testnet'
     };
 
-    if (!config.operatorId || !config.operatorKey) {
-      throw new Error('Hedera credentials not configured. Set HEDERA_OPERATOR_ID and HEDERA_OPERATOR_KEY environment variables.');
-    }
-
+    // Allow initialization without credentials for user-supplied wallet operations
     hederaService = new HederaProofSubmitter(config);
   }
 

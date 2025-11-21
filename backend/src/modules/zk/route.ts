@@ -20,6 +20,7 @@ router.post("/verify-proof", (req, res) => zkController.verifyProof(req, res));
 router.post("/validate-proof-structure", (req, res) => zkController.validateProofStructure(req, res));
 
 // ==================== Hedera Integration Routes ====================
+router.post("/verify-hedera", (req, res) => zkController.verifyOnHedera(req, res));
 router.post("/submit-to-hedera", (req, res) => zkController.submitProofToHedera(req, res));
 router.post("/mint-achievement", (req, res) => zkController.mintAchievementNFT(req, res));
 router.post("/complete-level", (req, res) => zkController.completeLevel(req, res));
