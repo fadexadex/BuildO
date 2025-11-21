@@ -90,19 +90,29 @@ function CircuitNodeMesh({ node, selected, onClick, isAnimating }: {
       return 0.2;
   };
 
+  const scale = node.isArray ? 0.4 : 0.3;
+
   return (
     <group position={node.position}>
       <Sphere
         ref={meshRef}
-        args={[0.3, 32, 32]}
+        args={[scale, 32, 32]}
         onClick={(e) => { e.stopPropagation(); onClick(); }}
         onPointerOver={() => setHovered(true)}
         onPointerOut={() => setHovered(false)}
       >
         <meshStandardMaterial color={getColor()} emissive={getColor()} emissiveIntensity={getEmissiveIntensity()} />
       </Sphere>
+      
+      {/* Visual indicator for array nodes */}
+      {node.isArray && (
+         <Sphere args={[scale * 1.2, 16, 16]}>
+             <meshBasicMaterial color={getColor()} wireframe transparent opacity={0.3} />
+         </Sphere>
+      )}
+
       <Text
-        position={[0, -0.5, 0]}
+        position={[0, -0.6, 0]}
         fontSize={0.2}
         color="white"
         anchorX="center"
@@ -111,7 +121,7 @@ function CircuitNodeMesh({ node, selected, onClick, isAnimating }: {
         {node.label}
       </Text>
       {node.value !== undefined && (
-        <Html position={[0, 0.5, 0]} center>
+        <Html position={[0, 0.6, 0]} center>
           <div className="bg-black/80 text-white px-2 py-1 rounded text-xs pointer-events-none whitespace-nowrap border border-slate-700">
             {node.value}
           </div>

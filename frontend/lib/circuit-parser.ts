@@ -8,7 +8,10 @@ export interface CircuitNode {
   parentId?: string;
   children?: string[]; // IDs of children
   collapsed?: boolean;
-  arraySize?: number;
+  // New fields for array support
+  name?: string; // The raw signal name (e.g., "x")
+  isArray?: boolean;
+  size?: string | number;
 }
 
 export interface CircuitEdge {
@@ -25,52 +28,98 @@ export const parseCircuitForVisualization = (circuitCode: string) => {
   // Simple parser for demonstration - in production, use proper AST parsing
   const lines = circuitCode.split('\n');
   
-  // Extract signals
-  const inputSignals: { name: string, arraySize?: number }[] = [];
-  const outputSignals: string[] = [];
+  // 1. Try to identify the main component and its template arguments
+  const mainMatch = circuitCode.match(/component\s+main\s*=\s*(\w+)\s*\(([^)]+)\)/);
+  let mainTemplateName = '';
+  let mainArgs: string[] = [];
+  
+  if (mainMatch) {
+      mainTemplateName = mainMatch[1];
+      // Split by comma but handle potential nested parens if needed (simple split for now)
+      mainArgs = mainMatch[2].split(',').map(s => s.trim());
+  }
+
+  // 2. Find the template definition to map arguments to parameters
+  // Regex to match "template Name(Param1, Param2) {"
+  const templateRegex = new RegExp(`template\\s+${mainTemplateName}\\s*\\(([^)]*)\\)`);
+  const templateMatch = circuitCode.match(templateRegex);
+  const paramMap = new Map<string, string>();
+  
+  if (templateMatch && mainArgs.length > 0) {
+      const params = templateMatch[1].split(',').map(s => s.trim()).filter(p => p);
+      params.forEach((p, i) => {
+          if (i < mainArgs.length) {
+              paramMap.set(p, mainArgs[i]);
+          }
+      });
+  }
+
+  // Extract signals with array awareness
+  const inputSignals: {name: string, size?: string}[] = [];
+  const outputSignals: {name: string, size?: string}[] = [];
   
   lines.forEach(line => {
-    const inputMatch = line.match(/signal\s+input\s+(\w+)\s*;/);
-    const arrayInputMatch = line.match(/signal\s+input\s+(\w+)\[(\d+)\]/);
-    const outputMatch = line.match(/signal\s+output\s+(\w+)/);
+    // Match "signal input x;" or "signal input x[N];" or "signal input x[10];"
+    const inputMatch = line.match(/signal\s+input\s+(\w+)(?:\s*\[([^\]]+)\])?/);
+    const outputMatch = line.match(/signal\s+output\s+(\w+)(?:\s*\[([^\]]+)\])?/);
     
-    if (arrayInputMatch) {
-        inputSignals.push({ name: arrayInputMatch[1], arraySize: parseInt(arrayInputMatch[2]) });
-    } else if (inputMatch) {
-        inputSignals.push({ name: inputMatch[1] });
+    if (inputMatch) {
+        let size = inputMatch[2];
+        if (size && paramMap.has(size)) {
+            size = paramMap.get(size)!;
+        }
+        inputSignals.push({ name: inputMatch[1], size });
     }
-
-    if (outputMatch) outputSignals.push(outputMatch[1]);
+    if (outputMatch) {
+        let size = outputMatch[2];
+        if (size && paramMap.has(size)) {
+            size = paramMap.get(size)!;
+        }
+        outputSignals.push({ name: outputMatch[1], size });
+    }
   });
   
   // Create input nodes
   inputSignals.forEach((signal, idx) => {
+    const isArray = !!signal.size;
+    const label = isArray ? `${signal.name}[${signal.size}]` : signal.name;
+    
     newNodes.push({
       id: `input-${signal.name}`,
       type: 'input',
-      label: signal.name,
+      label: label,
+      name: signal.name,
       position: [-3, idx * 1.5 - (inputSignals.length * 0.75), 0],
       status: 'default',
-      arraySize: signal.arraySize
+      isArray,
+      size: signal.size
     });
   });
   
   // Create constraint/gate nodes
   lines.forEach((line, idx) => {
-    const constraintMatch = line.match(/(\w+)\s*(<==|===)\s*(.+);/);
+    const constraintMatch = line.match(/(\w+)(?:\[[^\]]+\])?\s*(<==|===)\s*(.+);/);
     if (constraintMatch) {
       const nodeId = `gate-${idx}`;
+      const targetVar = constraintMatch[1]; // e.g. 'y' or 'c'
+      
+      // Determine if we are assigning to an array index
+      const isArrayAssignment = line.includes(`${targetVar}[`);
+      
       newNodes.push({
         id: nodeId,
         type: 'gate',
-        label: constraintMatch[1], // Use the assigned variable as label
+        label: isArrayAssignment ? `${targetVar}[i]` : targetVar, // Simplified label
         position: [0, idx * 0.5 - 2, 0],
         status: 'default'
       });
       
       // Create edges from inputs to this gate
       inputSignals.forEach(signal => {
-        if (constraintMatch[3].includes(signal.name)) {
+        // Naive check: if constraint string includes input name
+        // Enhance: check for exact word boundary match to avoid matching substrings
+        const regex = new RegExp(`\\b${signal.name}\\b`);
+        if (regex.test(constraintMatch[3])) {
           newEdges.push({
             from: `input-${signal.name}`,
             to: nodeId,
@@ -83,35 +132,36 @@ export const parseCircuitForVisualization = (circuitCode: string) => {
   
   // Create output nodes
   outputSignals.forEach((signal, idx) => {
-    const nodeId = `output-${signal}`;
+    const nodeId = `output-${signal.name}`;
+    const isArray = !!signal.size;
+    const label = isArray ? `${signal.name}[${signal.size}]` : signal.name;
+
     newNodes.push({
       id: nodeId,
       type: 'output',
-      label: signal,
+      label: label,
       position: [3, idx * 1.5 - (outputSignals.length * 0.75), 0],
-      status: 'default'
+      status: 'default',
+      isArray,
+      size: signal.size
     });
     
     // Connect gates to outputs
     newNodes.forEach(node => {
-      if (node.type === 'gate' && node.label === signal) {
-          // Direct assignment to output
-           newEdges.push({
-            from: node.id,
-            to: nodeId,
-            status: 'default'
-          });
-      }
-      // Also check if gate output flows to this output (simplified)
       if (node.type === 'gate') {
-          // If the gate label matches the output signal (already handled)
-          // This is very basic dependency tracking
+          // Basic logic: if gate assigns to this output variable
+          // The gate label might be "y" or "y[i]" and output is "y"
+          const gateTarget = node.label.replace(/\[.*\]/, '');
+          if (gateTarget === signal.name) {
+             newEdges.push({
+                from: node.id,
+                to: nodeId,
+                status: 'default'
+             });
+          }
       }
     });
   });
-  
-  // Logic to create a "Main" component group wrapper if needed
-  // For now, we keep it flat for the basic parser
   
   return { nodes: newNodes, edges: newEdges };
 };

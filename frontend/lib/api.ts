@@ -232,6 +232,8 @@ export interface CompileCircuitResponse {
   success?: boolean;
   error?: string;
   errors?: string[];
+  formattedErrors?: string;
+  warnings?: string[];
 }
 
 export interface GenerateProofRequest {
@@ -247,6 +249,7 @@ export interface GenerateProofResponse {
   success?: boolean;
   error?: string;
   errors?: string[];
+  formattedErrors?: string;
 }
 
 export interface VerifyProofRequest {

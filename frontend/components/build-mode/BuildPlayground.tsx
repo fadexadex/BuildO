@@ -167,16 +167,30 @@ export function BuildPlayground() {
       try {
            const inputs: Record<string, any> = {};
            
-           // Group array elements
-           Object.entries(inputValues).forEach(([key, value]) => {
-             const arrayMatch = key.match(/^(\w+)\[(\d+)\]$/);
-             if (arrayMatch) {
-               const [, name, index] = arrayMatch;
-               if (!inputs[name]) inputs[name] = [];
-               inputs[name][parseInt(index)] = value;
-             } else {
-               inputs[key] = value;
-             }
+           // Process inputs with auto-expansion for arrays
+           Object.entries(inputValues).forEach(([k, v]) => {
+               const node = nodes.find(n => n.type === 'input' && (n.name === k || n.label === k));
+               
+               // Check for array auto-expansion: if it's an array node but value is scalar
+               if (node?.isArray && node.size && v && !v.trim().startsWith('[') && !v.trim().startsWith('{')) {
+                   const size = parseInt(String(node.size));
+                   if (!isNaN(size) && size > 0) {
+                       addLog(`> Auto-expanding input '${k}' to array of size ${size}`);
+                       inputs[k] = Array(size).fill(v.trim());
+                       return;
+                   }
+               }
+
+               // Regular parsing
+               try {
+                   if (v.trim().startsWith('[') || v.trim().startsWith('{')) {
+                       inputs[k] = JSON.parse(v);
+                   } else {
+                       inputs[k] = v; // Pass as string
+                   }
+               } catch (e) {
+                   inputs[k] = v;
+               }
            });
            
            const res = await ZkAPI.generateProof({ circuitName: 'custom', inputs, provingSystem });
@@ -429,40 +443,16 @@ export function BuildPlayground() {
                         <TabsContent value="inputs" className="flex-1 p-4 overflow-auto m-0">
                              <div className="space-y-3">
                                 {nodes.filter(n => n.type === 'input').map(node => (
-                                    <div key={node.id} className="space-y-2">
-                                        <Label className="text-slate-400 text-xs font-mono">{node.label}</Label>
-                                        
-                                        {node.arraySize ? (
-                                          // Render array inputs
-                                          <div className="space-y-1 pl-2 border-l-2 border-slate-800">
-                                            {Array.from({ length: node.arraySize }).map((_, idx) => (
-                                              <div key={idx} className="grid grid-cols-4 gap-2 items-center">
-                                                <Label className="text-slate-500 text-xs font-mono">
-                                                  [{idx}]
-                                                </Label>
-                                                <Input 
-                                                  className="col-span-3 h-8 bg-slate-950 border-slate-800 text-slate-200 text-xs font-mono focus:border-indigo-500" 
-                                                  value={inputValues[`${node.label}[${idx}]`] || ''}
-                                                  onChange={(e) => setInputValues({
-                                                    ...inputValues, 
-                                                    [`${node.label}[${idx}]`]: e.target.value
-                                                  })}
-                                                  placeholder="0"
-                                                />
-                                              </div>
-                                            ))}
-                                          </div>
-                                        ) : (
-                                          // Render scalar input
-                                          <div className="grid grid-cols-3 gap-2 items-center">
-                                            <Input 
-                                                className="col-span-3 h-8 bg-slate-950 border-slate-800 text-slate-200 text-xs font-mono focus:border-indigo-500" 
-                                                value={inputValues[node.label] || ''}
-                                                onChange={(e) => setInputValues({...inputValues, [node.label]: e.target.value})}
-                                                placeholder="0"
-                                            />
-                                          </div>
-                                        )}
+                                    <div key={node.id} className="grid grid-cols-3 gap-2 items-center">
+                                        <Label className="text-slate-400 text-xs font-mono" title={node.isArray ? `Array of size ${node.size}` : 'Scalar'}>
+                                            {node.label}
+                                        </Label>
+                                        <Input 
+                                            className="col-span-2 h-8 bg-slate-950 border-slate-800 text-slate-200 text-xs font-mono focus:border-indigo-500" 
+                                            value={inputValues[node.name || node.label] || ''}
+                                            onChange={(e) => setInputValues({...inputValues, [node.name || node.label]: e.target.value})}
+                                            placeholder={node.isArray ? `Array [${node.size || 'N'}] (e.g. [1,2] or single value)` : "0"}
+                                        />
                                     </div>
                                 ))}
                                 {nodes.filter(n => n.type === 'input').length === 0 && (

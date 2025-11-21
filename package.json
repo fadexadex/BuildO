@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "@web3modal/ethers": "^5.1.11"
+    "@web3modal/ethers": "^5.1.11",
+    "framer-motion": "^12.23.24"
   }
 }

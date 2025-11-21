@@ -445,7 +445,27 @@ export class ProofGeneratorService {
   ): Promise<string> {
     const zkeyPath = path.join(this.zkeyDir, `${circuitName}_final.zkey`);
 
-    if (existsSync(zkeyPath)) {
+    let shouldRegenerate = !existsSync(zkeyPath);
+
+    if (!shouldRegenerate && existsSync(r1csPath)) {
+      // Check if zkey is stale compared to R1CS
+      try {
+        const zkeyStats = await fs.stat(zkeyPath);
+        const r1csStats = await fs.stat(r1csPath);
+        
+        if (r1csStats.mtime > zkeyStats.mtime) {
+          console.log(`Zkey is stale (R1CS is newer). Regenerating zkey for: ${circuitName}`);
+          shouldRegenerate = true;
+          // Clean up old zkey to force regeneration
+          await fs.unlink(zkeyPath).catch(e => console.warn('Failed to delete old zkey:', e));
+        }
+      } catch (error) {
+        console.warn('Error checking file timestamps, forcing regeneration:', error);
+        shouldRegenerate = true;
+      }
+    }
+
+    if (!shouldRegenerate) {
       console.log(`Using existing zkey: ${zkeyPath}`);
       return zkeyPath;
     }

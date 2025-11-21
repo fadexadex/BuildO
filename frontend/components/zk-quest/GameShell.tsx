@@ -210,7 +210,7 @@ export function GameShell() {
     }
 
     return (
-      <LevelWrapper levelId={levelId}>
+      <LevelWrapper key={levelId} levelId={levelId}>
         {levelComponent}
       </LevelWrapper>
     );

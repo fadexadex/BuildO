@@ -26,12 +26,19 @@ export function LevelIntro({ levelId, onComplete }: LevelIntroProps) {
     }
   }, [narrative, onComplete]);
 
-  if (!narrative) return null;
+  const currentDialogue = narrative ? narrative.dialogue[step] : "";
 
-  const currentDialogue = narrative.dialogue[step];
+  // If no narrative exists for this level, skip intro
+  useEffect(() => {
+    if (!narrative) {
+      onComplete();
+    }
+  }, [narrative, onComplete]);
 
   // Typing effect
   useEffect(() => {
+    if (!narrative) return;
+
     if (showFullText) {
       setTypingIndex(currentDialogue.length);
       return;
@@ -47,13 +54,15 @@ export function LevelIntro({ levelId, onComplete }: LevelIntroProps) {
       }, 30);
       return () => clearTimeout(timeout);
     }
-  }, [typingIndex, currentDialogue, showFullText]);
+  }, [typingIndex, currentDialogue, showFullText, narrative]);
 
   // Reset typing when step changes
   useEffect(() => {
     setTypingIndex(0);
     setShowFullText(false);
   }, [step]);
+
+  if (!narrative) return null;
 
   const handleNext = () => {
     if (typingIndex < currentDialogue.length) {
